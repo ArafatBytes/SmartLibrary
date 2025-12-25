@@ -1,4 +1,106 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app) with Supabase integration.
+
+## Supabase Setup
+
+### 1. Create a Supabase Project
+
+1. Go to [Supabase Dashboard](https://supabase.com/dashboard)
+2. Click "New Project"
+3. Fill in your project details (name, database password, region)
+4. Wait for your project to be provisioned
+
+### 2. Get Your API Keys
+
+1. In your Supabase project dashboard, go to **Settings** → **API**
+2. Copy your **Project URL** and **anon/public key**
+
+### 3. Configure Environment Variables
+
+1. Open the `.env.local` file in the project root
+2. Replace the placeholder values with your actual Supabase credentials:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
+```
+
+### 4. Using Supabase in Your App
+
+**Client Components** (use for browser-side operations):
+```typescript
+import { createClient } from '@/lib/supabase/client'
+
+export default function ClientComponent() {
+  const supabase = createClient()
+  // Use supabase client here
+}
+```
+
+**Server Components** (use for server-side operations):
+```typescript
+import { createClient } from '@/lib/supabase/server'
+
+export default async function ServerComponent() {
+  const supabase = await createClient()
+  // Use supabase client here
+}
+```
+
+**Server Actions** (use for mutations):
+```typescript
+'use server'
+import { createClient } from '@/lib/supabase/server'
+
+export async function myServerAction() {
+  const supabase = await createClient()
+  // Perform database operations
+}
+```
+
+### 5. Authentication Example
+
+```typescript
+// Sign up
+const { data, error } = await supabase.auth.signUp({
+  email: 'user@example.com',
+  password: 'password123',
+})
+
+// Sign in
+const { data, error } = await supabase.auth.signInWithPassword({
+  email: 'user@example.com',
+  password: 'password123',
+})
+
+// Sign out
+await supabase.auth.signOut()
+```
+
+### 6. Database Example
+
+```typescript
+// Fetch data
+const { data, error } = await supabase
+  .from('your_table')
+  .select('*')
+
+// Insert data
+const { data, error } = await supabase
+  .from('your_table')
+  .insert({ column: 'value' })
+
+// Update data
+const { data, error } = await supabase
+  .from('your_table')
+  .update({ column: 'new_value' })
+  .eq('id', 123)
+
+// Delete data
+const { data, error } = await supabase
+  .from('your_table')
+  .delete()
+  .eq('id', 123)
+```
 
 ## Getting Started
 
