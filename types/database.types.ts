@@ -88,30 +88,21 @@ export interface Database {
         Row: {
           copy_id: number
           isbn: string
-          status: 'Available' | 'Borrowed' | 'Lost' | 'Maintenance'
-          acquisition_date: string
-          condition: 'Excellent' | 'Good' | 'Fair' | 'Poor'
-          location: string | null
+          status: 'Available' | 'Borrowed' | 'Lost'
           created_at: string
           updated_at: string
         }
         Insert: {
           copy_id?: number
           isbn: string
-          status?: 'Available' | 'Borrowed' | 'Lost' | 'Maintenance'
-          acquisition_date?: string
-          condition?: 'Excellent' | 'Good' | 'Fair' | 'Poor'
-          location?: string | null
+          status?: 'Available' | 'Borrowed' | 'Lost'
           created_at?: string
           updated_at?: string
         }
         Update: {
           copy_id?: number
           isbn?: string
-          status?: 'Available' | 'Borrowed' | 'Lost' | 'Maintenance'
-          acquisition_date?: string
-          condition?: 'Excellent' | 'Good' | 'Fair' | 'Poor'
-          location?: string | null
+          status?: 'Available' | 'Borrowed' | 'Lost'
           created_at?: string
           updated_at?: string
         }
@@ -153,8 +144,6 @@ export interface Database {
           librarian_id: number | null
           borrow_date: string
           due_date: string
-          status: 'Active' | 'Returned' | 'Overdue' | 'Lost'
-          notes: string | null
           created_at: string
           updated_at: string
         }
@@ -165,8 +154,6 @@ export interface Database {
           librarian_id?: number | null
           borrow_date?: string
           due_date: string
-          status?: 'Active' | 'Returned' | 'Overdue' | 'Lost'
-          notes?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -177,8 +164,6 @@ export interface Database {
           librarian_id?: number | null
           borrow_date?: string
           due_date?: string
-          status?: 'Active' | 'Returned' | 'Overdue' | 'Lost'
-          notes?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -207,36 +192,21 @@ export interface Database {
         Row: {
           fine_id: number
           borrow_id: number | null
-          member_id: number
           amount: number
-          reason: string
-          status: 'Unpaid' | 'Paid' | 'Waived'
-          issued_date: string
-          paid_date: string | null
           created_at: string
           updated_at: string
         }
         Insert: {
           fine_id?: number
           borrow_id?: number | null
-          member_id: number
           amount: number
-          reason: string
-          status?: 'Unpaid' | 'Paid' | 'Waived'
-          issued_date?: string
-          paid_date?: string | null
           created_at?: string
           updated_at?: string
         }
         Update: {
           fine_id?: number
           borrow_id?: number | null
-          member_id?: number
           amount?: number
-          reason?: string
-          status?: 'Unpaid' | 'Paid' | 'Waived'
-          issued_date?: string
-          paid_date?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -283,30 +253,21 @@ export interface Database {
         Row: {
           payment_id: number
           fine_id: number
-          amount: number
           payment_date: string
-          payment_method: string | null
-          transaction_reference: string | null
           received_by: number | null
           created_at: string
         }
         Insert: {
           payment_id?: number
           fine_id: number
-          amount: number
           payment_date?: string
-          payment_method?: string | null
-          transaction_reference?: string | null
           received_by?: number | null
           created_at?: string
         }
         Update: {
           payment_id?: number
           fine_id?: number
-          amount?: number
           payment_date?: string
-          payment_method?: string | null
-          transaction_reference?: string | null
           received_by?: number | null
           created_at?: string
         }
@@ -317,8 +278,6 @@ export interface Database {
           borrow_id: number
           librarian_id: number | null
           return_date: string
-          condition_on_return: 'Excellent' | 'Good' | 'Fair' | 'Poor' | 'Damaged' | null
-          notes: string | null
           created_at: string
         }
         Insert: {
@@ -326,8 +285,6 @@ export interface Database {
           borrow_id: number
           librarian_id?: number | null
           return_date?: string
-          condition_on_return?: 'Excellent' | 'Good' | 'Fair' | 'Poor' | 'Damaged' | null
-          notes?: string | null
           created_at?: string
         }
         Update: {
@@ -335,8 +292,6 @@ export interface Database {
           borrow_id?: number
           librarian_id?: number | null
           return_date?: string
-          condition_on_return?: 'Excellent' | 'Good' | 'Fair' | 'Poor' | 'Damaged' | null
-          notes?: string | null
           created_at?: string
         }
       }
@@ -395,6 +350,7 @@ export interface Database {
           borrow_status: string
           days_overdue: number
           librarian: string | null
+          is_returned: boolean
         }
       }
       member_fines_view: {
@@ -403,8 +359,7 @@ export interface Database {
           member_name: string
           email: string
           total_fines: number | null
-          unpaid_amount: number | null
-          paid_amount: number | null
+          total_fine_amount: number | null
         }
       }
     }

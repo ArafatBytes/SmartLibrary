@@ -269,13 +269,15 @@ SELECT
         ELSE 'Active'
     END AS borrow_status,
     GREATEST(0, CURRENT_DATE - bt.due_date) AS days_overdue,
-    u.username AS librarian
+    u.username AS librarian,
+    CASE WHEN rt.return_id IS NULL THEN false ELSE true END AS is_returned
 FROM borrow_transactions bt
 JOIN members m ON bt.member_id = m.member_id
 JOIN book_copies bc ON bt.copy_id = bc.copy_id
 JOIN books b ON bc.isbn = b.isbn
 LEFT JOIN users u ON bt.librarian_id = u.user_id
-WHERE bt.status = 'Active';
+LEFT JOIN return_transactions rt ON bt.borrow_id = rt.borrow_id
+WHERE rt.return_id IS NULL;
 
 -- View: Member Outstanding Fines
 CREATE OR REPLACE VIEW member_fines_view AS
@@ -283,11 +285,11 @@ SELECT
     m.member_id,
     m.name AS member_name,
     m.email,
-    COUNT(f.fine_id) AS total_fines,
-    SUM(f.amount) FILTER (WHERE f.status = 'Unpaid') AS unpaid_amount,
-    SUM(f.amount) FILTER (WHERE f.status = 'Paid') AS paid_amount
+    COUNT(DISTINCT f.fine_id) AS total_fines,
+    COALESCE(SUM(f.amount), 0) AS total_fine_amount
 FROM members m
-LEFT JOIN fines f ON m.member_id = f.member_id
+LEFT JOIN borrow_transactions bt ON m.member_id = bt.member_id
+LEFT JOIN fines f ON bt.borrow_id = f.borrow_id
 GROUP BY m.member_id, m.name, m.email;
 
 -- Grant select on views

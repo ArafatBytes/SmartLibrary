@@ -8,7 +8,7 @@
 -- CLEAR EXISTING SAMPLE DATA (for clean re-runs)
 -- =====================================================
 TRUNCATE TABLE payments, fines, return_transactions, borrow_transactions, 
-             book_copies, book_author, books, authors, publishers, categories, 
+             book_copies, book_author, books, authors, categories, 
              members, users, audit_log RESTART IDENTITY CASCADE;
 
 -- =====================================================
@@ -74,23 +74,23 @@ INSERT INTO book_author (isbn, author_id) VALUES
 -- =====================================================
 -- SAMPLE BOOK COPIES
 -- =====================================================
-INSERT INTO book_copies (isbn, status, condition, location) VALUES
-    ('9780747532699', 'Available', 'Good', 'A-101'),
-    ('9780747532699', 'Available', 'Excellent', 'A-102'),
-    ('9780747532699', 'Borrowed', 'Good', 'A-103'),
-    ('9780553103540', 'Available', 'Good', 'B-201'),
-    ('9780553103540', 'Available', 'Fair', 'B-202'),
-    ('9780062693662', 'Available', 'Excellent', 'C-301'),
-    ('9780385121675', 'Available', 'Good', 'D-401'),
-    ('9780385121675', 'Borrowed', 'Good', 'D-402'),
-    ('9780553293357', 'Available', 'Good', 'E-501'),
-    ('9780385490818', 'Available', 'Excellent', 'F-601'),
-    ('9780385504201', 'Available', 'Good', 'G-701'),
-    ('9780385504201', 'Available', 'Good', 'G-702'),
-    ('9780316017923', 'Available', 'Excellent', 'H-801'),
-    ('9780062316097', 'Available', 'Good', 'I-901'),
-    ('9780062316097', 'Borrowed', 'Good', 'I-902'),
-    ('9781524763138', 'Available', 'Excellent', 'J-1001');
+INSERT INTO book_copies (isbn, status) VALUES
+    ('9780747532699', 'Available'),
+    ('9780747532699', 'Available'),
+    ('9780747532699', 'Borrowed'),
+    ('9780553103540', 'Available'),
+    ('9780553103540', 'Available'),
+    ('9780062693662', 'Available'),
+    ('9780385121675', 'Available'),
+    ('9780385121675', 'Borrowed'),
+    ('9780553293357', 'Available'),
+    ('9780385490818', 'Available'),
+    ('9780385504201', 'Available'),
+    ('9780385504201', 'Available'),
+    ('9780316017923', 'Available'),
+    ('9780062316097', 'Available'),
+    ('9780062316097', 'Borrowed'),
+    ('9781524763138', 'Available');
 
 -- =====================================================
 -- SAMPLE USERS (Admin and Librarians)
@@ -115,27 +115,26 @@ INSERT INTO members (name, email, phone, address, join_date, membership_expiry_d
 -- =====================================================
 -- SAMPLE BORROW TRANSACTIONS
 -- =====================================================
-INSERT INTO borrow_transactions (member_id, copy_id, librarian_id, borrow_date, due_date, status) VALUES
-    (1, 3, 2, NOW() - INTERVAL '10 days', CURRENT_DATE + INTERVAL '4 days', 'Active'),
-    (2, 8, 2, NOW() - INTERVAL '5 days', CURRENT_DATE + INTERVAL '9 days', 'Active'),
-    (3, 15, 3, NOW() - INTERVAL '20 days', CURRENT_DATE - INTERVAL '6 days', 'Active'), -- Overdue
-    (4, 1, 2, NOW() - INTERVAL '30 days', CURRENT_DATE - INTERVAL '16 days', 'Returned'),
-    (5, 4, 3, NOW() - INTERVAL '25 days', CURRENT_DATE - INTERVAL '11 days', 'Returned');
+INSERT INTO borrow_transactions (member_id, copy_id, librarian_id, borrow_date, due_date) VALUES
+    (1, 3, 2, NOW() - INTERVAL '10 days', CURRENT_DATE + INTERVAL '4 days'),
+    (2, 8, 2, NOW() - INTERVAL '5 days', CURRENT_DATE + INTERVAL '9 days'),
+    (3, 15, 3, NOW() - INTERVAL '20 days', CURRENT_DATE - INTERVAL '6 days'),
+    (4, 1, 2, NOW() - INTERVAL '30 days', CURRENT_DATE - INTERVAL '16 days'),
+    (5, 4, 3, NOW() - INTERVAL '25 days', CURRENT_DATE - INTERVAL '11 days');
 
 -- =====================================================
 -- SAMPLE RETURN TRANSACTIONS
 -- =====================================================
-INSERT INTO return_transactions (borrow_id, librarian_id, return_date, condition_on_return) VALUES
-    (4, 2, NOW() - INTERVAL '2 days', 'Good'),
-    (5, 3, NOW() - INTERVAL '1 day', 'Fair');
-
--- Note: Fines will be automatically created by triggers for overdue returns
+INSERT INTO return_transactions (borrow_id, librarian_id, return_date) VALUES
+    (4, 2, NOW() - INTERVAL '2 days'),
+    (5, 3, NOW() - INTERVAL '1 day');
 
 -- =====================================================
--- SAMPLE MANUAL FINES (Damaged book)
+-- SAMPLE FINES
 -- =====================================================
-INSERT INTO fines (borrow_id, member_id, amount, reason, status) VALUES
-    (5, 5, 10.00, 'Book returned in fair condition - minor damage', 'Unpaid');
+INSERT INTO fines (borrow_id, amount) VALUES
+    (3, 6.00),
+    (5, 11.00);
 
 -- =====================================================
 -- CONFIRMATION MESSAGE
@@ -146,5 +145,5 @@ BEGIN
     RAISE NOTICE '📚 %s books added', (SELECT COUNT(*) FROM books);
     RAISE NOTICE '👥 %s members added', (SELECT COUNT(*) FROM members);
     RAISE NOTICE '📖 %s book copies added', (SELECT COUNT(*) FROM book_copies);
-    RAISE NOTICE '🔄 %s active borrows', (SELECT COUNT(*) FROM borrow_transactions WHERE status = ''Active'');
+    RAISE NOTICE '🔄 %s borrows', (SELECT COUNT(*) FROM borrow_transactions);
 END $$;

@@ -16,8 +16,6 @@ DROP TABLE IF EXISTS authors CASCADE;
 DROP TABLE IF EXISTS categories CASCADE;
 DROP TABLE IF EXISTS members CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
-DROP FUNCTION IF EXISTS update_updated_at_column CASCADE;
-DROP FUNCTION IF EXISTS check_membership_expiry CASCADE;
 
 -- =====================================================
 -- TABLE: categories
@@ -89,6 +87,7 @@ CREATE TABLE members (
     member_id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     email VARCHAR(255) NOT NULL UNIQUE,
+    phone VARCHAR(20),
     address TEXT,
     join_date DATE NOT NULL DEFAULT CURRENT_DATE,
     membership_expiry_date DATE NOT NULL DEFAULT (CURRENT_DATE + INTERVAL '1 year'),
@@ -109,53 +108,7 @@ CREATE INDEX idx_members_expiry ON members(membership_expiry_date);
 CREATE INDEX idx_users_username ON users(username);
 CREATE INDEX idx_users_email ON users(email);
 
--- =====================================================
--- TRIGGERS for updated_at timestamps
--- =====================================================
-CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = NOW();
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
 
-CREATE TRIGGER update_categories_updated_at BEFORE UPDATE ON categories
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_authors_updated_at BEFORE UPDATE ON authors
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_books_updated_at BEFORE UPDATE ON books
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_members_updated_at BEFORE UPDATE ON members
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
--- =====================================================
--- TRIGGER: Auto-update membership status based on expiry date
--- =====================================================
-CREATE OR REPLACE FUNCTION check_membership_expiry()
-RETURNS TRIGGER AS $$
-BEGIN
-    -- Auto-update status to 'Expired' if expiry date has passed
-    IF NEW.membership_expiry_date < CURRENT_DATE AND NEW.membership_status != 'Suspended' THEN
-        NEW.membership_status = 'Expired';
-    -- Auto-update status to 'Active' if expiry date is in the future and not suspended
-    ELSIF NEW.membership_expiry_date >= CURRENT_DATE AND NEW.membership_status = 'Expired' THEN
-        NEW.membership_status = 'Active';
-    END IF;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trigger_check_membership_expiry
-BEFORE INSERT OR UPDATE ON members
-FOR EACH ROW
-EXECUTE FUNCTION check_membership_expiry();
 
 -- =====================================================
 -- COMMENTS
