@@ -9,8 +9,8 @@ interface AuditLogEntry {
   action: string
   table_name: string
   record_id: number | null
-  old_values: any
-  new_values: any
+  old_values: Record<string, unknown> | null
+  new_values: Record<string, unknown> | null
   timestamp: string
 }
 

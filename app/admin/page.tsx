@@ -1,12 +1,18 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, startTransition } from 'react'
+
+interface UserSession {
+  id: number
+  role: string
+  username: string
+}
 
 export default function AdminDashboard() {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<'librarians' | 'audit'>('librarians')
-  const [user, setUser] = useState<any>(null)
+  const [user, setUser] = useState<UserSession | null>(null)
 
   useEffect(() => {
     // Get user session from cookie
@@ -14,11 +20,18 @@ export default function AdminDashboard() {
     const sessionCookie = cookies.find(c => c.trim().startsWith('user_session='))
     
     if (sessionCookie) {
-      const sessionData = JSON.parse(decodeURIComponent(sessionCookie.split('=')[1]))
-      if (sessionData.role !== 'Admin') {
+      try {
+        const sessionData = JSON.parse(decodeURIComponent(sessionCookie.split('=')[1])) as UserSession
+        if (sessionData.role !== 'Admin') {
+          router.push('/login')
+          return
+        }
+        startTransition(() => {
+          setUser(sessionData)
+        })
+      } catch {
         router.push('/login')
       }
-      setUser(sessionData)
     } else {
       router.push('/login')
     }

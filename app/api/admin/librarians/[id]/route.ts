@@ -10,7 +10,12 @@ export async function PUT(
     const { username, email, phone, password } = await request.json()
     const supabase = await createClient()
 
-    const updateData: any = {
+    const updateData: {
+      username: string
+      email: string
+      phone: string | null
+      password_hash?: string
+    } = {
       username,
       email,
       phone: phone || null
@@ -34,7 +39,7 @@ export async function PUT(
     }
 
     return NextResponse.json({ success: true, user: data })
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -58,7 +63,7 @@ export async function DELETE(
     }
 
     return NextResponse.json({ success: true })
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

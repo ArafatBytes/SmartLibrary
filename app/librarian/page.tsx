@@ -1,11 +1,25 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, startTransition } from 'react'
+
+interface UserSession {
+  id: number
+  role: string
+  username: string
+}
+
+interface ActiveBorrow {
+  borrow_id: number
+  member_id: number
+  copy_id: number
+  due_date: string
+  borrow_date: string
+}
 
 export default function LibrarianDashboard() {
   const router = useRouter()
-  const [user, setUser] = useState<any>(null)
+  const [user, setUser] = useState<UserSession | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [activeSection, setActiveSection] = useState<'borrow' | 'return'>('borrow')
 
@@ -18,7 +32,7 @@ export default function LibrarianDashboard() {
   // Return form
   const [returnCopyId, setReturnCopyId] = useState('')
   const [returnMessage, setReturnMessage] = useState('')
-  const [activeBorrows, setActiveBorrows] = useState<any[]>([])
+  const [activeBorrows, setActiveBorrows] = useState<ActiveBorrow[]>([])
 
   useEffect(() => {
     // Get user session from cookie
@@ -26,11 +40,18 @@ export default function LibrarianDashboard() {
     const sessionCookie = cookies.find(c => c.trim().startsWith('user_session='))
     
     if (sessionCookie) {
-      const sessionData = JSON.parse(decodeURIComponent(sessionCookie.split('=')[1]))
-      if (sessionData.role !== 'Librarian') {
+      try {
+        const sessionData = JSON.parse(decodeURIComponent(sessionCookie.split('=')[1])) as UserSession
+        if (sessionData.role !== 'Librarian') {
+          router.push('/login')
+          return
+        }
+        startTransition(() => {
+          setUser(sessionData)
+        })
+      } catch {
         router.push('/login')
       }
-      setUser(sessionData)
     } else {
       router.push('/login')
     }
@@ -49,6 +70,8 @@ export default function LibrarianDashboard() {
   const handleBorrowBook = async (e: React.FormEvent) => {
     e.preventDefault()
     setBorrowMessage('')
+
+    if (!user) return
 
     try {
       const response = await fetch('/api/librarian/borrow', {
@@ -81,6 +104,8 @@ export default function LibrarianDashboard() {
   const handleReturnBook = async (e: React.FormEvent) => {
     e.preventDefault()
     setReturnMessage('')
+
+    if (!user) return
 
     try {
       const response = await fetch('/api/librarian/return', {
