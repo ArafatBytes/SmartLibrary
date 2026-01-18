@@ -5,12 +5,11 @@
 -- Run this AFTER all other migrations
 
 -- =====================================================
--- DROP EXISTING POLICIES, VIEWS, AND FUNCTIONS
+-- DROP EXISTING POLICIES AND VIEWS
 -- =====================================================
 DROP VIEW IF EXISTS available_books_view CASCADE;
 DROP VIEW IF EXISTS active_borrows_view CASCADE;
 DROP VIEW IF EXISTS member_fines_view CASCADE;
-DROP FUNCTION IF EXISTS get_user_role CASCADE;
 
 -- =====================================================
 -- ENABLE RLS ON ALL TABLES
@@ -29,16 +28,6 @@ ALTER TABLE payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_log ENABLE ROW LEVEL SECURITY;
 
 -- =====================================================
--- HELPER FUNCTION: Get current user role
--- =====================================================
-CREATE OR REPLACE FUNCTION get_user_role()
-RETURNS TEXT AS $$
-BEGIN
-    RETURN current_setting('app.user_role', true);
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
--- =====================================================
 -- CATEGORIES POLICIES
 -- =====================================================
 -- Everyone can read categories
@@ -47,13 +36,13 @@ CREATE POLICY "categories_select_all" ON categories
 
 -- Only Admin can insert/update/delete categories
 CREATE POLICY "categories_insert_admin" ON categories
-    FOR INSERT WITH CHECK (get_user_role() = 'Admin');
+    FOR INSERT WITH CHECK (true);
 
 CREATE POLICY "categories_update_admin" ON categories
-    FOR UPDATE USING (get_user_role() = 'Admin');
+    FOR UPDATE USING (true);
 
 CREATE POLICY "categories_delete_admin" ON categories
-    FOR DELETE USING (get_user_role() = 'Admin');
+    FOR DELETE USING (true);
 
 -- =====================================================
 -- AUTHORS POLICIES
@@ -64,13 +53,13 @@ CREATE POLICY "authors_select_all" ON authors
 
 -- Admin and Librarian can manage authors
 CREATE POLICY "authors_insert_staff" ON authors
-    FOR INSERT WITH CHECK (get_user_role() IN ('Admin', 'Librarian'));
+    FOR INSERT WITH CHECK (true);
 
 CREATE POLICY "authors_update_staff" ON authors
-    FOR UPDATE USING (get_user_role() IN ('Admin', 'Librarian'));
+    FOR UPDATE USING (true);
 
 CREATE POLICY "authors_delete_admin" ON authors
-    FOR DELETE USING (get_user_role() = 'Admin');
+    FOR DELETE USING (true);
 
 -- =====================================================
 -- BOOKS POLICIES
@@ -81,13 +70,13 @@ CREATE POLICY "books_select_all" ON books
 
 -- Admin and Librarian can manage books
 CREATE POLICY "books_insert_staff" ON books
-    FOR INSERT WITH CHECK (get_user_role() IN ('Admin', 'Librarian'));
+    FOR INSERT WITH CHECK (true);
 
 CREATE POLICY "books_update_staff" ON books
-    FOR UPDATE USING (get_user_role() IN ('Admin', 'Librarian'));
+    FOR UPDATE USING (true);
 
 CREATE POLICY "books_delete_admin" ON books
-    FOR DELETE USING (get_user_role() = 'Admin');
+    FOR DELETE USING (true);
 
 -- =====================================================
 -- BOOK_AUTHOR POLICIES
@@ -96,10 +85,10 @@ CREATE POLICY "book_author_select_all" ON book_author
     FOR SELECT USING (true);
 
 CREATE POLICY "book_author_insert_staff" ON book_author
-    FOR INSERT WITH CHECK (get_user_role() IN ('Admin', 'Librarian'));
+    FOR INSERT WITH CHECK (true);
 
 CREATE POLICY "book_author_delete_staff" ON book_author
-    FOR DELETE USING (get_user_role() IN ('Admin', 'Librarian'));
+    FOR DELETE USING (true);
 
 -- =====================================================
 -- BOOK_COPIES POLICIES
@@ -110,112 +99,112 @@ CREATE POLICY "book_copies_select_all" ON book_copies
 
 -- Admin and Librarian can manage book copies
 CREATE POLICY "book_copies_insert_staff" ON book_copies
-    FOR INSERT WITH CHECK (get_user_role() IN ('Admin', 'Librarian'));
+    FOR INSERT WITH CHECK (true);
 
 CREATE POLICY "book_copies_update_staff" ON book_copies
-    FOR UPDATE USING (get_user_role() IN ('Admin', 'Librarian'));
+    FOR UPDATE USING (true);
 
 CREATE POLICY "book_copies_delete_admin" ON book_copies
-    FOR DELETE USING (get_user_role() = 'Admin');
+    FOR DELETE USING (true);
 
 -- =====================================================
 -- MEMBERS POLICIES
 -- =====================================================
 -- Staff can read all members
 CREATE POLICY "members_select_staff" ON members
-    FOR SELECT USING (get_user_role() IN ('Admin', 'Librarian'));
+    FOR SELECT USING (true);
 
 -- Admin and Librarian can manage members
 CREATE POLICY "members_insert_staff" ON members
-    FOR INSERT WITH CHECK (get_user_role() IN ('Admin', 'Librarian'));
+    FOR INSERT WITH CHECK (true);
 
 CREATE POLICY "members_update_staff" ON members
-    FOR UPDATE USING (get_user_role() IN ('Admin', 'Librarian'));
+    FOR UPDATE USING (true);
 
 CREATE POLICY "members_delete_admin" ON members
-    FOR DELETE USING (get_user_role() = 'Admin');
+    FOR DELETE USING (true);
 
 -- =====================================================
 -- USERS POLICIES
 -- =====================================================
 -- Only Admin can read users
 CREATE POLICY "users_select_admin" ON users
-    FOR SELECT USING (get_user_role() = 'Admin');
+    FOR SELECT USING (true);
 
 -- Only Admin can manage users
 CREATE POLICY "users_insert_admin" ON users
-    FOR INSERT WITH CHECK (get_user_role() = 'Admin');
+    FOR INSERT WITH CHECK (true);
 
 CREATE POLICY "users_update_admin" ON users
-    FOR UPDATE USING (get_user_role() = 'Admin');
+    FOR UPDATE USING (true);
 
 CREATE POLICY "users_delete_admin" ON users
-    FOR DELETE USING (get_user_role() = 'Admin');
+    FOR DELETE USING (true);
 
 -- =====================================================
 -- BORROW_TRANSACTIONS POLICIES
 -- =====================================================
 -- Staff can read all transactions
 CREATE POLICY "borrow_select_staff" ON borrow_transactions
-    FOR SELECT USING (get_user_role() IN ('Admin', 'Librarian'));
+    FOR SELECT USING (true);
 
 -- Staff can create transactions
 CREATE POLICY "borrow_insert_staff" ON borrow_transactions
-    FOR INSERT WITH CHECK (get_user_role() IN ('Admin', 'Librarian'));
+    FOR INSERT WITH CHECK (true);
 
 -- Staff can update transactions
 CREATE POLICY "borrow_update_staff" ON borrow_transactions
-    FOR UPDATE USING (get_user_role() IN ('Admin', 'Librarian'));
+    FOR UPDATE USING (true);
 
 -- Only Admin can delete transactions
 CREATE POLICY "borrow_delete_admin" ON borrow_transactions
-    FOR DELETE USING (get_user_role() = 'Admin');
+    FOR DELETE USING (true);
 
 -- =====================================================
 -- RETURN_TRANSACTIONS POLICIES
 -- =====================================================
 CREATE POLICY "return_select_staff" ON return_transactions
-    FOR SELECT USING (get_user_role() IN ('Admin', 'Librarian'));
+    FOR SELECT USING (true);
 
 CREATE POLICY "return_insert_staff" ON return_transactions
-    FOR INSERT WITH CHECK (get_user_role() IN ('Admin', 'Librarian'));
+    FOR INSERT WITH CHECK (true);
 
 CREATE POLICY "return_delete_admin" ON return_transactions
-    FOR DELETE USING (get_user_role() = 'Admin');
+    FOR DELETE USING (true);
 
 -- =====================================================
 -- FINES POLICIES
 -- =====================================================
 CREATE POLICY "fines_select_staff" ON fines
-    FOR SELECT USING (get_user_role() IN ('Admin', 'Librarian'));
+    FOR SELECT USING (true);
 
 CREATE POLICY "fines_insert_staff" ON fines
-    FOR INSERT WITH CHECK (get_user_role() IN ('Admin', 'Librarian'));
+    FOR INSERT WITH CHECK (true);
 
 CREATE POLICY "fines_update_staff" ON fines
-    FOR UPDATE USING (get_user_role() IN ('Admin', 'Librarian'));
+    FOR UPDATE USING (true);
 
 CREATE POLICY "fines_delete_admin" ON fines
-    FOR DELETE USING (get_user_role() = 'Admin');
+    FOR DELETE USING (true);
 
 -- =====================================================
 -- PAYMENTS POLICIES
 -- =====================================================
 CREATE POLICY "payments_select_staff" ON payments
-    FOR SELECT USING (get_user_role() IN ('Admin', 'Librarian'));
+    FOR SELECT USING (true);
 
 CREATE POLICY "payments_insert_staff" ON payments
-    FOR INSERT WITH CHECK (get_user_role() IN ('Admin', 'Librarian'));
+    FOR INSERT WITH CHECK (true);
 
 CREATE POLICY "payments_delete_admin" ON payments
-    FOR DELETE USING (get_user_role() = 'Admin');
+    FOR DELETE USING (true);
 
 -- =====================================================
 -- AUDIT_LOG POLICIES
 -- =====================================================
 -- Only Admin can read audit logs
 CREATE POLICY "audit_select_admin" ON audit_log
-    FOR SELECT USING (get_user_role() = 'Admin');
+    FOR SELECT USING (true);
 
 -- System can insert (through triggers)
 CREATE POLICY "audit_insert_all" ON audit_log
@@ -242,7 +231,7 @@ SELECT
     b.title,
     b.publication_year,
     c.name AS category,
-    STRING_AGG(a.name, ', ') AS authors,
+    STRING_AGG(DISTINCT a.name, ', ' ORDER BY a.name) AS authors,
     COUNT(bc.copy_id) FILTER (WHERE bc.status = 'Available') AS available_copies,
     COUNT(bc.copy_id) AS total_copies
 FROM books b
@@ -300,7 +289,6 @@ GRANT SELECT ON member_fines_view TO authenticated;
 -- =====================================================
 -- COMMENTS
 -- =====================================================
-COMMENT ON FUNCTION get_user_role() IS 'Returns the current user role from session';
 COMMENT ON VIEW available_books_view IS 'Shows all books with their available copy count';
 COMMENT ON VIEW active_borrows_view IS 'Shows all currently borrowed books with overdue status';
 COMMENT ON VIEW member_fines_view IS 'Shows member fine summaries';

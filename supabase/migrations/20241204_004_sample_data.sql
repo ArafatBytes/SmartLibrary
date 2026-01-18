@@ -105,12 +105,12 @@ INSERT INTO users (username, email, password_hash, role) VALUES
 -- =====================================================
 -- SAMPLE MEMBERS
 -- =====================================================
-INSERT INTO members (name, email, phone, address, join_date, membership_expiry_date, membership_status) VALUES
-    ('John Smith', 'john.smith@email.com', '555-0101', '123 Main St, City', '2024-01-15', '2025-01-15', 'Active'),
-    ('Sarah Johnson', 'sarah.j@email.com', '555-0102', '456 Oak Ave, City', '2024-02-20', '2025-02-20', 'Active'),
-    ('Michael Brown', 'mbrown@email.com', '555-0103', '789 Pine Rd, City', '2024-03-10', '2025-03-10', 'Active'),
-    ('Emily Davis', 'emily.d@email.com', '555-0104', '321 Elm St, City', '2024-04-05', '2025-04-05', 'Active'),
-    ('David Wilson', 'dwilson@email.com', '555-0105', '654 Maple Dr, City', '2023-12-01', '2024-12-01', 'Expired');
+INSERT INTO members (name, email, phone, address) VALUES
+    ('John Smith', 'john.smith@email.com', '555-0101', '123 Main St, City'),
+    ('Sarah Johnson', 'sarah.j@email.com', '555-0102', '456 Oak Ave, City'),
+    ('Michael Brown', 'mbrown@email.com', '555-0103', '789 Pine Rd, City'),
+    ('Emily Davis', 'emily.d@email.com', '555-0104', '321 Elm St, City'),
+    ('David Wilson', 'dwilson@email.com', '555-0105', '654 Maple Dr, City');
 
 -- =====================================================
 -- SAMPLE BORROW TRANSACTIONS
