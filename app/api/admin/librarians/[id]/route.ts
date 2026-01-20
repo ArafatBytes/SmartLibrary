@@ -1,12 +1,14 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import bcrypt from 'bcryptjs'
 
 // PUT - Update librarian
 export async function PUT(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const { username, email, phone, password } = await request.json()
     const supabase = await createClient()
 
@@ -23,13 +25,13 @@ export async function PUT(
 
     // Only update password if provided
     if (password) {
-      updateData.password_hash = password // TODO: Hash in production
+      updateData.password_hash = await bcrypt.hash(password, 10)
     }
 
     const { data, error } = await supabase
       .from('users')
       .update(updateData)
-      .eq('user_id', params.id)
+      .eq('user_id', id)
       .eq('role', 'Librarian') // Only update librarians
       .select()
       .single()
@@ -47,15 +49,16 @@ export async function PUT(
 // DELETE - Delete librarian
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const supabase = await createClient()
 
     const { error } = await supabase
       .from('users')
       .delete()
-      .eq('user_id', params.id)
+      .eq('user_id', id)
       .eq('role', 'Librarian') // Only delete librarians
 
     if (error) {

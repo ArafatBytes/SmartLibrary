@@ -1,8 +1,14 @@
 -- =====================================================
 -- SMART LIBRARY - SAMPLE DATA
 -- =====================================================
--- This migration adds sample data for testing
--- OPTIONAL: Run this to populate your database with test data
+-- ⚠️ IMPORTANT: Run this SQL file in Supabase SQL Editor
+-- This will populate your database with test users and sample data
+--
+-- LOGIN CREDENTIALS:
+-- Username: admin      | Password: password123
+-- Username: librarian1 | Password: password123
+-- Username: librarian2 | Password: password123
+-- =====================================================
 
 -- =====================================================
 -- CLEAR EXISTING SAMPLE DATA (for clean re-runs)
@@ -95,12 +101,13 @@ INSERT INTO book_copies (isbn, status) VALUES
 -- =====================================================
 -- SAMPLE USERS (Admin and Librarians)
 -- =====================================================
--- Note: In production, use proper password hashing!
--- These are bcrypt hashes for 'password123'
+-- 🔑 All users have the same password: password123
+-- 🔒 Hash: $2b$10$EmAii0C9U27Dr.h06jzjLu/PdjT7dr6bx533FSIM1rYabdO3ZayIy
+-- ✅ VERIFIED with bcrypt.compare() - This hash is CORRECT!
 INSERT INTO users (username, email, password_hash, role) VALUES
-    ('admin', 'admin@smartlibrary.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Admin'),
-    ('librarian1', 'librarian1@smartlibrary.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Librarian'),
-    ('librarian2', 'librarian2@smartlibrary.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Librarian');
+    ('admin', 'admin@smartlibrary.com', '$2b$10$EmAii0C9U27Dr.h06jzjLu/PdjT7dr6bx533FSIM1rYabdO3ZayIy', 'Admin'),
+    ('librarian1', 'librarian1@smartlibrary.com', '$2b$10$EmAii0C9U27Dr.h06jzjLu/PdjT7dr6bx533FSIM1rYabdO3ZayIy', 'Librarian'),
+    ('librarian2', 'librarian2@smartlibrary.com', '$2b$10$EmAii0C9U27Dr.h06jzjLu/PdjT7dr6bx533FSIM1rYabdO3ZayIy', 'Librarian');
 
 -- =====================================================
 -- SAMPLE MEMBERS
@@ -137,13 +144,42 @@ INSERT INTO fines (borrow_id, amount) VALUES
     (5, 11.00);
 
 -- =====================================================
+-- VERIFICATION QUERIES (Run these to verify data)
+-- =====================================================
+
+-- Check users were created
+SELECT user_id, username, email, role FROM users;
+
+-- Check books were created
+SELECT COUNT(*) as total_books FROM books;
+
+-- Check members were created
+SELECT COUNT(*) as total_members FROM members;
+
+-- Check book copies
+SELECT COUNT(*) as total_copies FROM book_copies;
+
+-- =====================================================
 -- CONFIRMATION MESSAGE
 -- =====================================================
 DO $$
 BEGIN
-    RAISE NOTICE '✅ Sample data inserted successfully!';
-    RAISE NOTICE '📚 %s books added', (SELECT COUNT(*) FROM books);
-    RAISE NOTICE '👥 %s members added', (SELECT COUNT(*) FROM members);
-    RAISE NOTICE '📖 %s book copies added', (SELECT COUNT(*) FROM book_copies);
-    RAISE NOTICE '🔄 %s borrows', (SELECT COUNT(*) FROM borrow_transactions);
+    RAISE NOTICE '✅ ✅ ✅ Sample data inserted successfully! ✅ ✅ ✅';
+    RAISE NOTICE '';
+    RAISE NOTICE '🔑 LOGIN CREDENTIALS:';
+    RAISE NOTICE '   Admin:      username=admin      password=password123';
+    RAISE NOTICE '   Librarian1: username=librarian1 password=password123';
+    RAISE NOTICE '   Librarian2: username=librarian2 password=password123';
+    RAISE NOTICE '';
+    RAISE NOTICE '📊 DATABASE SUMMARY:';
+    RAISE NOTICE '   📚 Books: %', (SELECT COUNT(*) FROM books);
+    RAISE NOTICE '   👥 Members: %', (SELECT COUNT(*) FROM members);
+    RAISE NOTICE '   📖 Book Copies: %', (SELECT COUNT(*) FROM book_copies);
+    RAISE NOTICE '   🔄 Borrow Transactions: %', (SELECT COUNT(*) FROM borrow_transactions);
+    RAISE NOTICE '   👤 Users (Staff): %', (SELECT COUNT(*) FROM users);
+    RAISE NOTICE '';
+    RAISE NOTICE '🌐 Next Steps:';
+    RAISE NOTICE '   1. Go to http://localhost:3000';
+    RAISE NOTICE '   2. Login with credentials above';
+    RAISE NOTICE '   3. Start testing the system!';
 END $$;

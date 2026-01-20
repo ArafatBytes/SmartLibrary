@@ -218,9 +218,6 @@ export interface Database {
           email: string
           phone: string | null
           address: string | null
-          join_date: string
-          membership_expiry_date: string
-          membership_status: 'Active' | 'Suspended' | 'Expired'
           created_at: string
           updated_at: string
         }
@@ -230,9 +227,6 @@ export interface Database {
           email: string
           phone?: string | null
           address?: string | null
-          join_date?: string
-          membership_expiry_date?: string
-          membership_status?: 'Active' | 'Suspended' | 'Expired'
           created_at?: string
           updated_at?: string
         }
@@ -242,9 +236,6 @@ export interface Database {
           email?: string
           phone?: string | null
           address?: string | null
-          join_date?: string
-          membership_expiry_date?: string
-          membership_status?: 'Active' | 'Suspended' | 'Expired'
           created_at?: string
           updated_at?: string
         }

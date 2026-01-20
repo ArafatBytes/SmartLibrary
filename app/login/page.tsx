@@ -29,11 +29,15 @@ export default function LoginPage() {
         return
       }
 
-      // Redirect based on role
+      // Wait a tiny bit for cookie to be set, then redirect based on role
+      await new Promise(resolve => setTimeout(resolve, 100))
+      
       if (data.role === 'Admin') {
         router.push('/admin')
       } else if (data.role === 'Librarian') {
         router.push('/librarian')
+      } else {
+        router.push('/login')
       }
     } catch (err) {
       setError('An error occurred. Please try again.')

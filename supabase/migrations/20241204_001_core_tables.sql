@@ -89,9 +89,6 @@ CREATE TABLE members (
     email VARCHAR(255) NOT NULL UNIQUE,
     phone VARCHAR(20),
     address TEXT,
-    join_date DATE NOT NULL DEFAULT CURRENT_DATE,
-    membership_expiry_date DATE NOT NULL DEFAULT (CURRENT_DATE + INTERVAL '1 year'),
-    membership_status VARCHAR(20) DEFAULT 'Active' CHECK (membership_status IN ('Active', 'Suspended', 'Expired')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -104,7 +101,6 @@ CREATE INDEX idx_books_title ON books(title);
 CREATE INDEX idx_book_author_isbn ON book_author(isbn);
 CREATE INDEX idx_book_author_author ON book_author(author_id);
 CREATE INDEX idx_members_email ON members(email);
-CREATE INDEX idx_members_expiry ON members(membership_expiry_date);
 CREATE INDEX idx_users_username ON users(username);
 CREATE INDEX idx_users_email ON users(email);
 

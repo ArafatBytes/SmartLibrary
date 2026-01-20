@@ -14,12 +14,11 @@ export async function POST(request: Request) {
 
     const supabase = await createClient()
 
-    // Find active borrow for this copy
+    // Find active borrow for this copy (no return transaction yet)
     const { data: activeBorrows, error: borrowError } = await supabase
       .from('borrow_transactions')
       .select('*')
       .eq('copy_id', copy_id)
-      .is('return_date', null) // No return record yet
       .order('borrow_date', { ascending: false })
 
     if (borrowError) {

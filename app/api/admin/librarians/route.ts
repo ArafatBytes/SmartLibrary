@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import bcrypt from 'bcryptjs'
 
 // GET - Fetch all librarians
 export async function GET() {
@@ -36,14 +37,16 @@ export async function POST(request: Request) {
 
     const supabase = await createClient()
 
-    // TODO: Hash password with bcrypt in production
+    // Hash password with bcrypt
+    const hashedPassword = await bcrypt.hash(password, 10)
+
     const { data, error } = await supabase
       .from('users')
       .insert({
         username,
         email,
         phone: phone || null,
-        password_hash: password, // In production, hash this!
+        password_hash: hashedPassword,
         role: 'Librarian'
       })
       .select()

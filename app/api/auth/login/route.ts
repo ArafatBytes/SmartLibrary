@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import bcrypt from 'bcryptjs'
 
 export async function POST(request: Request) {
   try {
@@ -28,10 +29,10 @@ export async function POST(request: Request) {
       )
     }
 
-    // In production, you should use bcrypt to compare hashed passwords
-    // For now, we'll do a simple comparison (NOT SECURE - DEMO ONLY)
-    // TODO: Implement proper password hashing with bcrypt
-    if (user.password_hash !== password) {
+    // Verify password using bcrypt
+    const isPasswordValid = await bcrypt.compare(password, user.password_hash)
+    
+    if (!isPasswordValid) {
       return NextResponse.json(
         { error: 'Invalid username or password' },
         { status: 401 }
@@ -50,16 +51,17 @@ export async function POST(request: Request) {
       }
     })
 
-    // Set cookie for session (simplified)
+    // Set cookie for session
     response.cookies.set('user_session', JSON.stringify({
       id: user.user_id,
       role: user.role,
       username: user.username
     }), {
-      httpOnly: true,
+      httpOnly: false, // Allow client-side JavaScript to read for role checks
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 60 * 60 * 24 // 24 hours
+      maxAge: 60 * 60 * 24, // 24 hours
+      path: '/'
     })
 
     return response

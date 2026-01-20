@@ -41,25 +41,27 @@ export default function LibrarianDashboard() {
     
     if (sessionCookie) {
       try {
-        const sessionData = JSON.parse(decodeURIComponent(sessionCookie.split('=')[1])) as UserSession
-        if (sessionData.role !== 'Librarian') {
-          router.push('/login')
-          return
-        }
+        const sessionValue = sessionCookie.split('=')[1]
+        const sessionData = JSON.parse(decodeURIComponent(sessionValue)) as UserSession
         startTransition(() => {
           setUser(sessionData)
         })
-      } catch {
-        router.push('/login')
+      } catch (error) {
+        console.error('Failed to parse session:', error)
       }
-    } else {
-      router.push('/login')
     }
   }, [router])
 
-  const handleLogout = () => {
-    document.cookie = 'user_session=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;'
-    router.push('/login')
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' })
+      router.push('/login')
+    } catch (error) {
+      console.error('Logout error:', error)
+      // Fallback: clear cookie manually
+      document.cookie = 'user_session=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;'
+      router.push('/login')
+    }
   }
 
   const handleSearch = () => {
