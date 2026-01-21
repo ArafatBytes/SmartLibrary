@@ -49,6 +49,31 @@ export async function POST(request: Request) {
       )
     }
 
+    // *** CHECK FOR UNPAID FINES BEFORE ALLOWING RETURN ***
+    const { data: unpaidFine, error: fineError } = await supabase
+      .from('fines')
+      .select(`
+        fine_id,
+        amount,
+        payments (payment_id)
+      `)
+      .eq('borrow_id', activeBorrow.borrow_id)
+      .maybeSingle()
+
+    if (fineError && fineError.code !== 'PGRST116') {
+      return NextResponse.json({ error: fineError.message }, { status: 500 })
+    }
+
+    // If fine exists and has no payment, block the return
+    if (unpaidFine && (!unpaidFine.payments || unpaidFine.payments.length === 0)) {
+      return NextResponse.json({
+        error: 'Cannot return book with unpaid fine',
+        fine_id: unpaidFine.fine_id,
+        fine_amount: unpaidFine.amount,
+        message: `Member must pay fine of $${unpaidFine.amount} before returning the book.`
+      }, { status: 400 })
+    }
+
     // Create return transaction
     const { data: returnTransaction, error: returnError } = await supabase
       .from('return_transactions')
@@ -70,27 +95,10 @@ export async function POST(request: Request) {
       .update({ status: 'Available' })
       .eq('copy_id', copy_id)
 
-    // TODO: Calculate and create fine if overdue
-    const dueDate = new Date(activeBorrow.due_date)
-    const returnDate = new Date()
-    
-    if (returnDate > dueDate) {
-      const daysOverdue = Math.ceil((returnDate.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24))
-      const fineAmount = daysOverdue * 1.00 // $1 per day
-      
-      // Create fine record
-      await supabase
-        .from('fines')
-        .insert({
-          borrow_id: activeBorrow.borrow_id,
-          amount: fineAmount
-        })
-    }
-
     return NextResponse.json({
       success: true,
       return: returnTransaction,
-      active_borrows: activeBorrows
+      message: 'Book returned successfully'
     })
   } catch (error) {
     console.error('Return error:', error)

@@ -5,9 +5,9 @@ export async function POST(request: Request) {
   try {
     const { copy_id, member_id, due_date, librarian_id } = await request.json()
 
-    if (!copy_id || !member_id || !due_date) {
+    if (!copy_id || !member_id) {
       return NextResponse.json(
-        { error: 'Copy ID, Member ID, and Due Date are required' },
+        { error: 'Copy ID and Member ID are required' },
         { status: 400 }
       )
     }
@@ -32,6 +32,19 @@ export async function POST(request: Request) {
       )
     }
 
+    // Calculate due_date: Default 4 months from today, or use provided date
+    const borrowDate = new Date()
+    let calculatedDueDate: string
+    
+    if (due_date) {
+      calculatedDueDate = due_date
+    } else {
+      // Add 4 months to borrow date
+      const dueDateObj = new Date(borrowDate)
+      dueDateObj.setMonth(dueDateObj.getMonth() + 4)
+      calculatedDueDate = dueDateObj.toISOString().split('T')[0] // YYYY-MM-DD format
+    }
+
     // Create borrow transaction
     const { data: borrow, error: borrowError } = await supabase
       .from('borrow_transactions')
@@ -39,8 +52,8 @@ export async function POST(request: Request) {
         member_id,
         copy_id,
         librarian_id: librarian_id || null,
-        due_date,
-        borrow_date: new Date().toISOString()
+        due_date: calculatedDueDate,
+        borrow_date: borrowDate.toISOString()
       })
       .select()
       .single()
@@ -57,7 +70,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      borrow
+      borrow,
+      message: `Book borrowed successfully. Due date: ${calculatedDueDate}`
     })
   } catch (error) {
     console.error('Borrow error:', error)
