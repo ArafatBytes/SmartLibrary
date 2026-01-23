@@ -11,6 +11,19 @@ DROP VIEW IF EXISTS available_books_view CASCADE;
 DROP VIEW IF EXISTS active_borrows_view CASCADE;
 DROP VIEW IF EXISTS member_fines_view CASCADE;
 
+-- Drop all existing policies
+DO $$ 
+DECLARE
+    r RECORD;
+BEGIN
+    FOR r IN (SELECT schemaname, tablename, policyname 
+              FROM pg_policies 
+              WHERE schemaname = 'public') 
+    LOOP
+        EXECUTE 'DROP POLICY IF EXISTS ' || quote_ident(r.policyname) || ' ON ' || quote_ident(r.tablename) || ' CASCADE';
+    END LOOP;
+END $$;
+
 -- =====================================================
 -- ENABLE RLS ON ALL TABLES
 -- =====================================================

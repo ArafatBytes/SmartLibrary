@@ -1,6 +1,15 @@
 -- Analytics helper functions for admin dashboard
 -- Run this after 20241204_005_functions_triggers.sql
 
+-- Drop existing analytics functions if they exist
+DROP FUNCTION IF EXISTS count_active_borrows() CASCADE;
+DROP FUNCTION IF EXISTS count_overdue_books() CASCADE;
+DROP FUNCTION IF EXISTS get_monthly_borrowing_trend() CASCADE;
+DROP FUNCTION IF EXISTS get_members_highest_overdue() CASCADE;
+DROP FUNCTION IF EXISTS get_circulation_stats(DATE, DATE) CASCADE;
+DROP FUNCTION IF EXISTS get_inventory_health() CASCADE;
+DROP FUNCTION IF EXISTS get_fine_collection_summary(DATE, DATE) CASCADE;
+
 -- Function to count active borrows
 CREATE OR REPLACE FUNCTION count_active_borrows()
 RETURNS INTEGER
@@ -45,7 +54,7 @@ $$;
 -- Function to get monthly borrowing trend (last 12 months)
 CREATE OR REPLACE FUNCTION get_monthly_borrowing_trend()
 RETURNS TABLE (
-    month VARCHAR,
+    month TEXT,
     total_borrows BIGINT,
     unique_members BIGINT
 )
@@ -54,9 +63,9 @@ AS $$
 BEGIN
     RETURN QUERY
     SELECT 
-        TO_CHAR(bt.borrow_date, 'YYYY-MM') AS month,
-        COUNT(bt.borrow_id) AS total_borrows,
-        COUNT(DISTINCT bt.member_id) AS unique_members
+        TO_CHAR(bt.borrow_date, 'YYYY-MM')::TEXT AS month,
+        COUNT(bt.borrow_id)::BIGINT AS total_borrows,
+        COUNT(DISTINCT bt.member_id)::BIGINT AS unique_members
     FROM borrow_transactions bt
     WHERE bt.borrow_date >= CURRENT_DATE - INTERVAL '12 months'
     GROUP BY TO_CHAR(bt.borrow_date, 'YYYY-MM')
@@ -68,8 +77,8 @@ $$;
 CREATE OR REPLACE FUNCTION get_members_highest_overdue()
 RETURNS TABLE (
     member_id INTEGER,
-    member_name VARCHAR,
-    email VARCHAR,
+    member_name TEXT,
+    email TEXT,
     total_overdue_days NUMERIC,
     books_currently_overdue BIGINT
 )
@@ -78,10 +87,10 @@ AS $$
 BEGIN
     RETURN QUERY
     SELECT 
-        m.member_id,
-        m.name AS member_name,
-        m.email,
-        COALESCE(SUM(GREATEST(0, CURRENT_DATE - bt.due_date)), 0) AS total_overdue_days,
+        m.member_id::INTEGER,
+        m.name::TEXT AS member_name,
+        m.email::TEXT,
+        COALESCE(SUM(GREATEST(0, CURRENT_DATE - bt.due_date)), 0)::NUMERIC AS total_overdue_days,
         COUNT(CASE 
             WHEN bt.due_date < CURRENT_DATE 
             AND NOT EXISTS (
@@ -89,7 +98,7 @@ BEGIN
                 WHERE rt.borrow_id = bt.borrow_id
             )
             THEN 1 
-        END) AS books_currently_overdue
+        END)::BIGINT AS books_currently_overdue
     FROM members m
     LEFT JOIN borrow_transactions bt ON m.member_id = bt.member_id
     GROUP BY m.member_id, m.name, m.email

@@ -10,9 +10,18 @@ interface OverviewStats {
   total_fines: number
 }
 
+interface AnalyticsData {
+  report_type: string
+  generated_at: string
+  stats?: OverviewStats
+  data?: Record<string, unknown>[] | Record<string, number>
+  count?: number
+  limit?: number
+}
+
 export default function AdminAnalyticsPage() {
   const [reportType, setReportType] = useState('overview')
-  const [data, setData] = useState<any>(null)
+  const [data, setData] = useState<AnalyticsData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -33,7 +42,7 @@ export default function AdminAnalyticsPage() {
       } else {
         setData(result)
       }
-    } catch (err) {
+    } catch {
       setError('Network error')
     } finally {
       setLoading(false)
@@ -135,9 +144,9 @@ export default function AdminAnalyticsPage() {
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {data.data.map((row: any, idx: number) => (
+                      {data.data.map((row: Record<string, unknown>, idx: number) => (
                         <tr key={idx} className="hover:bg-gray-50">
-                          {Object.entries(row).map(([key, value]: [string, any]) => (
+                          {Object.entries(row).map(([key, value]) => (
                             <td key={key} className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                               {typeof value === 'number' && !Number.isInteger(value) 
                                 ? value.toFixed(2) 
@@ -154,7 +163,7 @@ export default function AdminAnalyticsPage() {
               {/* Object Data (e.g., monthly aggregates) */}
               {typeof data.data === 'object' && !Array.isArray(data.data) && Object.keys(data.data).length > 0 && (
                 <div className="space-y-3">
-                  {Object.entries(data.data).map(([key, value]: [string, any]) => (
+                  {Object.entries(data.data).map(([key, value]) => (
                     <div key={key} className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
                       <span className="font-medium text-gray-700">{key}</span>
                       <span className="text-lg font-bold text-gray-900">

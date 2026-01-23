@@ -1,5 +1,13 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import type { SupabaseClient } from '@supabase/supabase-js'
+import type { 
+  BookCount, 
+  MemberCount, 
+  MonthlyData, 
+  CategoryCount,
+  Fine
+} from '@/lib/types/analytics.types'
 
 export async function GET(request: Request) {
   try {
@@ -54,7 +62,7 @@ export async function GET(request: Request) {
 }
 
 // Overview statistics
-async function getOverviewStats(supabase: any) {
+async function getOverviewStats(supabase: SupabaseClient) {
   const [
     totalBooks,
     totalMembers,
@@ -66,8 +74,8 @@ async function getOverviewStats(supabase: any) {
     supabase.from('members').select('member_id', { count: 'exact', head: true }),
     supabase.rpc('count_active_borrows'),
     supabase.rpc('count_overdue_books'),
-    supabase.from('fines').select('amount').then((res: any) => 
-      res.data?.reduce((sum: number, f: any) => sum + parseFloat(f.amount), 0) || 0
+    supabase.from('fines').select('amount').then((res) => 
+      (res.data as Fine[] | null)?.reduce((sum: number, f: Fine) => sum + parseFloat(f.amount), 0) || 0
     )
   ])
 
@@ -85,7 +93,7 @@ async function getOverviewStats(supabase: any) {
 }
 
 // Monthly borrowing trend (last 12 months)
-async function getMonthlyBorrowingTrend(supabase: any) {
+async function getMonthlyBorrowingTrend(supabase: SupabaseClient) {
   const { data, error } = await supabase.rpc('get_monthly_borrowing_trend')
 
   if (error) {
@@ -100,7 +108,7 @@ async function getMonthlyBorrowingTrend(supabase: any) {
 }
 
 // Fines collected per month
-async function getFinesCollectedPerMonth(supabase: any) {
+async function getFinesCollectedPerMonth(supabase: SupabaseClient) {
   const { data, error } = await supabase
     .from('payments')
     .select(`
@@ -115,14 +123,15 @@ async function getFinesCollectedPerMonth(supabase: any) {
   }
 
   // Group by month
-  const monthlyData = data?.reduce((acc: any, payment: any) => {
-    const month = new Date(payment.payment_date).toISOString().slice(0, 7)
+  const monthlyData = data?.reduce((acc: MonthlyData, payment: unknown) => {
+    const p = payment as { payment_date: string; fines: { amount: string } }
+    const month = new Date(p.payment_date).toISOString().slice(0, 7)
     if (!acc[month]) {
       acc[month] = 0
     }
-    acc[month] += parseFloat(payment.fines.amount)
+    acc[month] += parseFloat(p.fines.amount)
     return acc
-  }, {})
+  }, {} as MonthlyData)
 
   return NextResponse.json({
     report_type: 'fines_collected_per_month',
@@ -132,7 +141,7 @@ async function getFinesCollectedPerMonth(supabase: any) {
 }
 
 // Top K most borrowed books
-async function getTopBorrowedBooks(supabase: any, limit: number) {
+async function getTopBorrowedBooks(supabase: SupabaseClient, limit: number) {
   const { data, error } = await supabase
     .from('borrow_transactions')
     .select(`
@@ -151,20 +160,21 @@ async function getTopBorrowedBooks(supabase: any, limit: number) {
   }
 
   // Count borrows per book
-  const bookCounts = data?.reduce((acc: any, borrow: any) => {
-    const isbn = borrow.book_copies.isbn
-    const title = borrow.book_copies.books.title
-    const category = borrow.book_copies.books.categories?.name || 'Unknown'
+  const bookCounts: Record<string, BookCount> = data?.reduce((acc: Record<string, BookCount>, borrow: unknown) => {
+    const b = borrow as { book_copies?: { isbn?: string; books?: { title?: string; categories?: { name?: string } } } }
+    const isbn = b.book_copies?.isbn || ''
+    const title = b.book_copies?.books?.title || ''
+    const category = b.book_copies?.books?.categories?.name || 'Unknown'
     
     if (!acc[isbn]) {
       acc[isbn] = { isbn, title, category, borrow_count: 0 }
     }
     acc[isbn].borrow_count++
     return acc
-  }, {})
+  }, {}) || {}
 
-  const sortedBooks = Object.values(bookCounts || {})
-    .sort((a: any, b: any) => b.borrow_count - a.borrow_count)
+  const sortedBooks = Object.values(bookCounts)
+    .sort((a: BookCount, b: BookCount) => b.borrow_count - a.borrow_count)
     .slice(0, limit)
 
   return NextResponse.json({
@@ -176,7 +186,7 @@ async function getTopBorrowedBooks(supabase: any, limit: number) {
 }
 
 // Category-wise borrow counts
-async function getCategoryWiseBorrows(supabase: any) {
+async function getCategoryWiseBorrows(supabase: SupabaseClient) {
   const { data, error } = await supabase
     .from('borrow_transactions')
     .select(`
@@ -196,14 +206,15 @@ async function getCategoryWiseBorrows(supabase: any) {
   }
 
   // Count by category
-  const categoryCounts = data?.reduce((acc: any, borrow: any) => {
-    const category = borrow.book_copies.books.categories.name
+  const categoryCounts = data?.reduce((acc: CategoryCount, borrow: unknown) => {
+    const b = borrow as { book_copies?: { books?: { categories?: { name?: string } } } }
+    const category = b.book_copies?.books?.categories?.name || 'Unknown'
     if (!acc[category]) {
       acc[category] = 0
     }
     acc[category]++
     return acc
-  }, {})
+  }, {} as CategoryCount)
 
   return NextResponse.json({
     report_type: 'category_wise_borrows',
@@ -213,7 +224,7 @@ async function getCategoryWiseBorrows(supabase: any) {
 }
 
 // Most active members
-async function getMostActiveMembers(supabase: any, limit: number) {
+async function getMostActiveMembers(supabase: SupabaseClient, limit: number) {
   const { data, error } = await supabase
     .from('borrow_transactions')
     .select(`
@@ -229,20 +240,21 @@ async function getMostActiveMembers(supabase: any, limit: number) {
   }
 
   // Count borrows per member
-  const memberCounts = data?.reduce((acc: any, borrow: any) => {
-    const memberId = borrow.member_id
-    const name = borrow.members.name
-    const email = borrow.members.email
+  const memberCounts: Record<number, MemberCount> = data?.reduce((acc: Record<number, MemberCount>, borrow: unknown) => {
+    const b = borrow as { member_id: number; members?: { name?: string; email?: string } }
+    const memberId = b.member_id
+    const name = b.members?.name || ''
+    const email = b.members?.email || ''
     
     if (!acc[memberId]) {
       acc[memberId] = { member_id: memberId, name, email, total_borrows: 0 }
     }
     acc[memberId].total_borrows++
     return acc
-  }, {})
+  }, {}) || {}
 
-  const sortedMembers = Object.values(memberCounts || {})
-    .sort((a: any, b: any) => b.total_borrows - a.total_borrows)
+  const sortedMembers = Object.values(memberCounts)
+    .sort((a: MemberCount, b: MemberCount) => b.total_borrows - a.total_borrows)
     .slice(0, limit)
 
   return NextResponse.json({
@@ -254,7 +266,7 @@ async function getMostActiveMembers(supabase: any, limit: number) {
 }
 
 // Book availability report
-async function getBookAvailability(supabase: any) {
+async function getBookAvailability(supabase: SupabaseClient) {
   const { data, error } = await supabase
     .from('books')
     .select(`
@@ -270,14 +282,17 @@ async function getBookAvailability(supabase: any) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  const availability = data?.map((book: any) => ({
-    isbn: book.isbn,
-    title: book.title,
-    total_copies: book.book_copies?.length || 0,
-    available: book.book_copies?.filter((c: any) => c.status === 'Available').length || 0,
-    borrowed: book.book_copies?.filter((c: any) => c.status === 'Borrowed').length || 0,
-    lost: book.book_copies?.filter((c: any) => c.status === 'Lost').length || 0
-  }))
+  const availability = data?.map((book: unknown) => {
+    const b = book as { isbn: string; title: string; book_copies?: { status: string }[] }
+    return {
+      isbn: b.isbn,
+      title: b.title,
+      total_copies: b.book_copies?.length || 0,
+      available: b.book_copies?.filter((c) => c.status === 'Available').length || 0,
+      borrowed: b.book_copies?.filter((c) => c.status === 'Borrowed').length || 0,
+      lost: b.book_copies?.filter((c) => c.status === 'Lost').length || 0
+    }
+  })
 
   return NextResponse.json({
     report_type: 'book_availability',
@@ -287,7 +302,7 @@ async function getBookAvailability(supabase: any) {
 }
 
 // Books that have never been borrowed
-async function getNeverBorrowedBooks(supabase: any) {
+async function getNeverBorrowedBooks(supabase: SupabaseClient) {
   const { data, error } = await supabase
     .from('books')
     .select(`
@@ -305,17 +320,21 @@ async function getNeverBorrowedBooks(supabase: any) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  const neverBorrowed = data?.filter((book: any) => {
-    return book.book_copies?.every((copy: any) => 
+  const neverBorrowed = data?.filter((book: unknown) => {
+    const b = book as { book_copies?: { borrow_transactions?: unknown[] }[] }
+    return b.book_copies?.every((copy) => 
       !copy.borrow_transactions || copy.borrow_transactions.length === 0
     )
-  }).map((book: any) => ({
-    isbn: book.isbn,
-    title: book.title,
-    publication_year: book.publication_year,
-    category: book.categories?.name || 'Unknown',
-    total_copies: book.book_copies?.length || 0
-  }))
+  }).map((book: unknown) => {
+    const b = book as { isbn: string; title: string; publication_year: number; categories?: { name?: string }; book_copies?: unknown[] }
+    return {
+      isbn: b.isbn,
+      title: b.title,
+      publication_year: b.publication_year,
+      category: b.categories?.name || 'Unknown',
+      total_copies: b.book_copies?.length || 0
+    }
+  })
 
   return NextResponse.json({
     report_type: 'never_borrowed_books',
@@ -326,7 +345,7 @@ async function getNeverBorrowedBooks(supabase: any) {
 }
 
 // Members with highest total overdue days
-async function getMembersWithHighestOverdue(supabase: any) {
+async function getMembersWithHighestOverdue(supabase: SupabaseClient) {
   const { data, error } = await supabase.rpc('get_members_highest_overdue')
 
   if (error) {
@@ -341,7 +360,7 @@ async function getMembersWithHighestOverdue(supabase: any) {
 }
 
 // Books overdue today
-async function getOverdueBooksToday(supabase: any) {
+async function getOverdueBooksToday(supabase: SupabaseClient) {
   const { data, error } = await supabase
     .from('borrow_transactions')
     .select(`
@@ -369,17 +388,26 @@ async function getOverdueBooksToday(supabase: any) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  const overdueBooks = data?.map((borrow: any) => ({
-    borrow_id: borrow.borrow_id,
-    member_name: borrow.members.name,
-    member_email: borrow.members.email,
-    book_title: borrow.book_copies.books.title,
-    isbn: borrow.book_copies.books.isbn,
-    copy_id: borrow.book_copies.copy_id,
-    borrow_date: borrow.borrow_date,
-    due_date: borrow.due_date,
-    days_overdue: Math.floor((new Date().getTime() - new Date(borrow.due_date).getTime()) / (1000 * 60 * 60 * 24))
-  }))
+  const overdueBooks = data?.map((borrow: unknown) => {
+    const b = borrow as { 
+      borrow_id: number; 
+      borrow_date: string; 
+      due_date: string;
+      members?: { name?: string; email?: string };
+      book_copies?: { copy_id?: number; books?: { title?: string; isbn?: string } }
+    }
+    return {
+      borrow_id: b.borrow_id,
+      member_name: b.members?.name || '',
+      member_email: b.members?.email || '',
+      book_title: b.book_copies?.books?.title || '',
+      isbn: b.book_copies?.books?.isbn || '',
+      copy_id: b.book_copies?.copy_id || 0,
+      borrow_date: b.borrow_date,
+      due_date: b.due_date,
+      days_overdue: Math.floor((new Date().getTime() - new Date(b.due_date).getTime()) / (1000 * 60 * 60 * 24))
+    }
+  })
 
   return NextResponse.json({
     report_type: 'overdue_books_today',
@@ -390,7 +418,7 @@ async function getOverdueBooksToday(supabase: any) {
 }
 
 // Librarian activity monitoring
-async function getLibrarianActivity(supabase: any) {
+async function getLibrarianActivity(supabase: SupabaseClient) {
   const { data, error } = await supabase
     .from('users')
     .select(`
@@ -407,17 +435,27 @@ async function getLibrarianActivity(supabase: any) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  const activity = data?.map((librarian: any) => ({
-    user_id: librarian.user_id,
-    username: librarian.username,
-    email: librarian.email,
-    borrows_handled: librarian.borrow_transactions?.length || 0,
-    returns_handled: librarian.return_transactions?.length || 0,
-    payments_received: librarian.payments?.length || 0,
-    total_transactions: (librarian.borrow_transactions?.length || 0) + 
-                       (librarian.return_transactions?.length || 0) + 
-                       (librarian.payments?.length || 0)
-  }))
+  const activity = data?.map((librarian: unknown) => {
+    const l = librarian as {
+      user_id: number;
+      username: string;
+      email: string;
+      borrow_transactions?: unknown[];
+      return_transactions?: unknown[];
+      payments?: unknown[];
+    }
+    return {
+      user_id: l.user_id,
+      username: l.username,
+      email: l.email,
+      borrows_handled: l.borrow_transactions?.length || 0,
+      returns_handled: l.return_transactions?.length || 0,
+      payments_received: l.payments?.length || 0,
+      total_transactions: (l.borrow_transactions?.length || 0) + 
+                         (l.return_transactions?.length || 0) + 
+                         (l.payments?.length || 0)
+    }
+  })
 
   return NextResponse.json({
     report_type: 'librarian_activity',

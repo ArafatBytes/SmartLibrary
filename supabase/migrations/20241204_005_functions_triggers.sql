@@ -4,6 +4,26 @@
 -- This migration adds stored procedures, functions, and triggers
 -- Run this AFTER all table migrations
 
+-- Drop existing triggers first
+DROP TRIGGER IF EXISTS trg_update_copy_status_on_borrow ON borrow_transactions CASCADE;
+DROP TRIGGER IF EXISTS trg_update_copy_status_on_return ON return_transactions CASCADE;
+DROP TRIGGER IF EXISTS trg_generate_fine_on_return ON return_transactions CASCADE;
+DROP TRIGGER IF EXISTS trg_audit_users ON users CASCADE;
+DROP TRIGGER IF EXISTS trg_audit_members ON members CASCADE;
+DROP TRIGGER IF EXISTS trg_audit_borrows ON borrow_transactions CASCADE;
+DROP TRIGGER IF EXISTS trg_audit_returns ON return_transactions CASCADE;
+DROP TRIGGER IF EXISTS trg_audit_fines ON fines CASCADE;
+DROP TRIGGER IF EXISTS trg_audit_payments ON payments CASCADE;
+
+-- Drop existing functions
+DROP FUNCTION IF EXISTS calculate_overdue_fines() CASCADE;
+DROP FUNCTION IF EXISTS trigger_update_copy_status_on_borrow() CASCADE;
+DROP FUNCTION IF EXISTS trigger_update_copy_status_on_return() CASCADE;
+DROP FUNCTION IF EXISTS trigger_generate_fine_on_return() CASCADE;
+DROP FUNCTION IF EXISTS trigger_audit_log() CASCADE;
+DROP FUNCTION IF EXISTS get_active_borrows(INTEGER) CASCADE;
+DROP FUNCTION IF EXISTS get_member_fine_summary(INTEGER) CASCADE;
+
 -- =====================================================
 -- FUNCTION: Calculate and Update Fines (Weekly Job)
 -- =====================================================

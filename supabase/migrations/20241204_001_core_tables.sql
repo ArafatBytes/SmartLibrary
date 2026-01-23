@@ -48,6 +48,7 @@ CREATE TABLE books (
     isbn VARCHAR(20) PRIMARY KEY,
     title VARCHAR(500) NOT NULL,
     category_id INTEGER REFERENCES categories(category_id) ON DELETE SET NULL,
+    publisher VARCHAR(255),
     publication_year INTEGER,
     description TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),

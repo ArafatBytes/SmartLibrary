@@ -45,9 +45,10 @@ export async function GET(request: Request) {
     }
 
     // Filter out fines that have payments
-    const unpaid = unpaidFines?.filter((fine: any) => 
-      !fine.payments || fine.payments.length === 0
-    ) || []
+    const unpaid = unpaidFines?.filter((fine: unknown) => {
+      const f = fine as { payments?: unknown[] | null }
+      return !f.payments || f.payments.length === 0
+    }) || []
 
     return NextResponse.json({ 
       member_id: memberId,

@@ -17,11 +17,25 @@ interface ActiveBorrow {
   borrow_date: string
 }
 
+interface SearchResult {
+  isbn: string
+  title: string
+  authors: string
+  publisher: string
+  category: string
+  available_copies: number
+  total_copies: number
+  is_available: boolean
+  publication_year: number
+}
+
 export default function LibrarianDashboard() {
   const router = useRouter()
   const [user, setUser] = useState<UserSession | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
-  const [activeSection, setActiveSection] = useState<'borrow' | 'return'>('borrow')
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([])
+  const [searchLoading, setSearchLoading] = useState(false)
+  const [activeSection, setActiveSection] = useState<'borrow' | 'return' | 'search'>('search')
 
   // Borrow form
   const [borrowCopyId, setBorrowCopyId] = useState('')
@@ -64,9 +78,38 @@ export default function LibrarianDashboard() {
     }
   }
 
-  const handleSearch = () => {
-    // TODO: Implement book search
-    alert(`Searching for: ${searchQuery}`)
+  const handleSearch = async () => {
+    if (!searchQuery.trim() || searchQuery.trim().length < 2) {
+      alert('Please enter at least 2 characters to search')
+      return
+    }
+
+    setSearchLoading(true)
+    setActiveSection('search')
+
+    try {
+      const response = await fetch(`/api/librarian/search?q=${encodeURIComponent(searchQuery.trim())}`)
+      const data = await response.json()
+
+      if (response.ok) {
+        setSearchResults(data.results || [])
+      } else {
+        alert(`Search error: ${data.error}`)
+        setSearchResults([])
+      }
+    } catch (error) {
+      console.error('Search error:', error)
+      alert('Failed to search books')
+      setSearchResults([])
+    } finally {
+      setSearchLoading(false)
+    }
+  }
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSearch()
+    }
   }
 
   const handleBorrowBook = async (e: React.FormEvent) => {
@@ -160,16 +203,18 @@ export default function LibrarianDashboard() {
           <div className="flex gap-2">
             <input
               type="text"
-              placeholder="Search for books by name..."
+              placeholder="Search by book title..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyPress={handleKeyPress}
               className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <button
               onClick={handleSearch}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              disabled={searchLoading}
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400"
             >
-              Search
+              {searchLoading ? 'Searching...' : 'Search'}
             </button>
           </div>
         </div>
@@ -177,6 +222,91 @@ export default function LibrarianDashboard() {
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Search Results Section */}
+        {searchResults.length > 0 && (
+          <div className="mb-8 bg-white shadow rounded-lg p-6">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">
+              Search Results ({searchResults.length})
+            </h2>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Title
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Author(s)
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Publisher
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Category
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      ISBN
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Availability
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Copies
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {searchResults.map((book, index) => (
+                    <tr key={`${book.isbn}-${index}`} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm font-medium text-gray-900">{book.title}</div>
+                        {book.publication_year && (
+                          <div className="text-xs text-gray-500">({book.publication_year})</div>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-normal">
+                        <div className="text-sm text-gray-900">{book.authors}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-normal">
+                        <div className="text-sm text-gray-900">{book.publisher || 'N/A'}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                          {book.category}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-500">{book.isbn}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {book.is_available ? (
+                          <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                            Available
+                          </span>
+                        ) : (
+                          <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
+                            Not Available
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {book.available_copies} / {book.total_copies}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Empty State for Search */}
+        {searchQuery && !searchLoading && searchResults.length === 0 && (
+          <div className="mb-8 bg-white shadow rounded-lg p-6 text-center">
+            <p className="text-gray-500">No books found matching &quot;{searchQuery}&quot;</p>
+          </div>
+        )}
+
         {/* Section Tabs */}
         <div className="mb-6 border-b border-gray-200">
           <nav className="-mb-px flex space-x-8">
