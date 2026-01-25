@@ -132,6 +132,183 @@ CREATE TRIGGER tr_after_return_update_copy_status
 COMMENT ON FUNCTION trigger_update_copy_status_on_return() IS 'Automatically sets book_copy status to Available when a return transaction is created';
 
 -- =====================================================
+-- FUNCTION: Process Book Return with Fine Calculation
+-- =====================================================
+CREATE OR REPLACE FUNCTION process_book_return(
+    p_copy_id INTEGER,
+    p_librarian_id INTEGER
+)
+RETURNS TABLE(
+    success BOOLEAN,
+    return_id INTEGER,
+    fine_amount DECIMAL(10, 2),
+    message TEXT
+) AS $$
+DECLARE
+    v_borrow_id INTEGER;
+    v_due_date DATE;
+    v_days_overdue INTEGER;
+    v_fine_amount DECIMAL(10, 2);
+    v_fine_id INTEGER;
+    v_return_id INTEGER;
+BEGIN
+    -- Find active borrow for this copy
+    SELECT bt.borrow_id, bt.due_date INTO v_borrow_id, v_due_date
+    FROM borrow_transactions bt
+    WHERE bt.copy_id = p_copy_id
+      AND NOT EXISTS (
+          SELECT 1 FROM return_transactions rt 
+          WHERE rt.borrow_id = bt.borrow_id
+      )
+    ORDER BY bt.borrow_date DESC
+    LIMIT 1;
+
+    IF v_borrow_id IS NULL THEN
+        success := FALSE;
+        message := 'No active borrow found for this copy ID';
+        RETURN NEXT;
+        RETURN;
+    END IF;
+
+    -- Calculate fine if overdue
+    v_days_overdue := CURRENT_DATE - v_due_date;
+    IF v_days_overdue > 0 THEN
+        v_fine_amount := v_days_overdue * 2; -- 2 BDT per day
+
+        -- Check if fine exists, update or create
+        SELECT fine_id INTO v_fine_id
+        FROM fines
+        WHERE borrow_id = v_borrow_id;
+
+        IF v_fine_id IS NOT NULL THEN
+            -- Update existing fine
+            UPDATE fines
+            SET amount = v_fine_amount,
+                updated_at = NOW()
+            WHERE fine_id = v_fine_id;
+        ELSE
+            -- Create new fine
+            INSERT INTO fines (borrow_id, amount)
+            VALUES (v_borrow_id, v_fine_amount)
+            RETURNING fine_id INTO v_fine_id;
+        END IF;
+    ELSE
+        v_fine_amount := 0;
+    END IF;
+
+    -- Create return transaction
+    INSERT INTO return_transactions (borrow_id, librarian_id, return_date)
+    VALUES (v_borrow_id, p_librarian_id, NOW())
+    RETURNING return_transactions.return_id INTO v_return_id;
+
+    -- Update book copy status
+    UPDATE book_copies
+    SET status = 'Available',
+        updated_at = NOW()
+    WHERE copy_id = p_copy_id;
+
+    success := TRUE;
+    return_id := v_return_id;
+    fine_amount := COALESCE(v_fine_amount, 0);
+    message := CASE 
+        WHEN v_fine_amount > 0 THEN 'Book returned. Fine: ' || v_fine_amount || ' BDT'
+        ELSE 'Book returned successfully'
+    END;
+
+    RETURN NEXT;
+END;
+$$ LANGUAGE plpgsql;
+
+-- =====================================================
+-- FUNCTION: Record Fine Payment
+-- =====================================================
+CREATE OR REPLACE FUNCTION record_fine_payment(
+    p_fine_id INTEGER,
+    p_librarian_id INTEGER
+)
+RETURNS TABLE(
+    success BOOLEAN,
+    payment_id INTEGER,
+    message TEXT
+) AS $$
+DECLARE
+    v_payment_id INTEGER;
+    v_existing_payment INTEGER;
+BEGIN
+    -- Check if payment already exists
+    SELECT payments.payment_id INTO v_existing_payment
+    FROM payments
+    WHERE fine_id = p_fine_id;
+
+    IF v_existing_payment IS NOT NULL THEN
+        success := FALSE;
+        message := 'Payment already recorded for this fine';
+        RETURN NEXT;
+        RETURN;
+    END IF;
+
+    -- Record payment
+    INSERT INTO payments (fine_id, payment_date, received_by)
+    VALUES (p_fine_id, NOW(), p_librarian_id)
+    RETURNING payments.payment_id INTO v_payment_id;
+
+    success := TRUE;
+    payment_id := v_payment_id;
+    message := 'Payment recorded successfully';
+
+    RETURN NEXT;
+END;
+$$ LANGUAGE plpgsql;
+
+-- =====================================================
+-- FUNCTION: Get Active Borrow with Fine Details
+-- =====================================================
+CREATE OR REPLACE FUNCTION get_active_borrow_with_fine(
+    p_copy_id INTEGER
+)
+RETURNS TABLE(
+    borrow_id INTEGER,
+    member_id INTEGER,
+    member_name VARCHAR,
+    member_email VARCHAR,
+    borrow_date TIMESTAMP,
+    due_date DATE,
+    days_overdue INTEGER,
+    fine_amount DECIMAL(10, 2),
+    fine_id INTEGER,
+    payment_exists BOOLEAN
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        bt.borrow_id,
+        bt.member_id,
+        m.name,
+        m.email,
+        bt.borrow_date,
+        bt.due_date,
+        CASE 
+            WHEN CURRENT_DATE > bt.due_date 
+            THEN (CURRENT_DATE - bt.due_date)::INTEGER
+            ELSE 0
+        END as days_overdue,
+        COALESCE(f.amount, 0) as fine_amount,
+        f.fine_id,
+        EXISTS(SELECT 1 FROM payments p WHERE p.fine_id = f.fine_id) as payment_exists
+    FROM borrow_transactions bt
+    JOIN members m ON bt.member_id = m.member_id
+    LEFT JOIN fines f ON bt.borrow_id = f.borrow_id
+    WHERE bt.copy_id = p_copy_id
+      AND NOT EXISTS (
+          SELECT 1 FROM return_transactions rt 
+          WHERE rt.borrow_id = bt.borrow_id
+      )
+    ORDER BY bt.borrow_date DESC
+    LIMIT 1;
+END;
+$$ LANGUAGE plpgsql;
+
+-- =====================================================
 -- TRIGGER FUNCTION: Create fine on return if overdue
 -- =====================================================
 CREATE OR REPLACE FUNCTION trigger_generate_fine_on_return()
@@ -141,7 +318,7 @@ DECLARE
     v_return_date DATE;
     v_days_overdue INTEGER;
     v_fine_amount DECIMAL(10, 2);
-    v_fine_rate CONSTANT DECIMAL(10, 2) := 1.00; -- $1 per day
+    v_fine_rate CONSTANT DECIMAL(10, 2) := 2.00; -- 2 BDT per day
     v_fine_exists BOOLEAN;
 BEGIN
     -- Get the due date from borrow transaction

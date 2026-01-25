@@ -29,13 +29,43 @@ interface SearchResult {
   publication_year: number
 }
 
+interface CheckStatusResult {
+  copy_id: number
+  isbn: string
+  title: string
+  authors: string
+  publisher: string
+  category: string
+  publication_year: number
+  status: string
+  is_available: boolean
+  borrow_info?: {
+    borrow_id: number
+    borrow_date: string
+    due_date: string
+    member_name: string
+    member_email: string
+  }
+}
+
+interface FineDetails {
+  fine_id: number
+  borrow_id: number
+  member_name: string
+  member_email: string
+  borrow_date: string
+  due_date: string
+  days_overdue: number
+  fine_amount: number
+}
+
 export default function LibrarianDashboard() {
   const router = useRouter()
   const [user, setUser] = useState<UserSession | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [searchLoading, setSearchLoading] = useState(false)
-  const [activeSection, setActiveSection] = useState<'borrow' | 'return' | 'search'>('search')
+  const [activeSection, setActiveSection] = useState<'borrow' | 'return' | 'check'>('check')
 
   // Borrow form
   const [borrowCopyId, setBorrowCopyId] = useState('')
@@ -47,6 +77,14 @@ export default function LibrarianDashboard() {
   const [returnCopyId, setReturnCopyId] = useState('')
   const [returnMessage, setReturnMessage] = useState('')
   const [activeBorrows, setActiveBorrows] = useState<ActiveBorrow[]>([])
+  const [fineDetails, setFineDetails] = useState<FineDetails | null>(null)
+  const [showPaymentConfirm, setShowPaymentConfirm] = useState(false)
+
+  // Check status form
+  const [checkCopyId, setCheckCopyId] = useState('')
+  const [checkResult, setCheckResult] = useState<CheckStatusResult | null>(null)
+  const [checkLoading, setCheckLoading] = useState(false)
+  const [checkMessage, setCheckMessage] = useState('')
 
   useEffect(() => {
     // Get user session from cookie
@@ -85,7 +123,6 @@ export default function LibrarianDashboard() {
     }
 
     setSearchLoading(true)
-    setActiveSection('search')
 
     try {
       const response = await fetch(`/api/librarian/search?q=${encodeURIComponent(searchQuery.trim())}`)
@@ -149,6 +186,8 @@ export default function LibrarianDashboard() {
   const handleReturnBook = async (e: React.FormEvent) => {
     e.preventDefault()
     setReturnMessage('')
+    setFineDetails(null)
+    setShowPaymentConfirm(false)
 
     if (!user) return
 
@@ -158,24 +197,94 @@ export default function LibrarianDashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           copy_id: parseInt(returnCopyId),
-          librarian_id: user.id
+          librarian_id: user.id,
+          confirm_payment: false
         })
       })
 
       const data = await response.json()
 
       if (response.ok) {
-        setReturnMessage('Book returned successfully!')
+        setReturnMessage(data.message || 'Book returned successfully!')
         setReturnCopyId('')
-        if (data.active_borrows) {
-          setActiveBorrows(data.active_borrows)
-        }
+        setFineDetails(null)
+        setShowPaymentConfirm(false)
+      } else if (response.status === 402) {
+        // Payment required
+        setFineDetails(data.fine_details)
+        setShowPaymentConfirm(true)
+        setReturnMessage(data.message)
       } else {
-        setReturnMessage(`Error: ${data.error}`)
+        setReturnMessage(`Error: ${data.error || data.message}`)
       }
     } catch (error) {
       setReturnMessage('An error occurred')
       console.error(error)
+    }
+  }
+
+  const handleConfirmPayment = async () => {
+    if (!user || !fineDetails) return
+
+    try {
+      const response = await fetch('/api/librarian/return', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          copy_id: parseInt(returnCopyId),
+          librarian_id: user.id,
+          confirm_payment: true,
+          fine_id: fineDetails.fine_id
+        })
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setReturnMessage(`✓ ${data.message}`)
+        setReturnCopyId('')
+        setFineDetails(null)
+        setShowPaymentConfirm(false)
+      } else {
+        const errorMsg = data.details ? `${data.error}: ${data.details}` : (data.error || data.message)
+        setReturnMessage(`Error: ${errorMsg}`)
+        console.error('Return error:', data)
+      }
+    } catch (error) {
+      setReturnMessage('An error occurred while confirming payment')
+      console.error(error)
+    }
+  }
+
+  const handleCheckStatus = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setCheckMessage('')
+    setCheckResult(null)
+
+    if (!checkCopyId.trim()) {
+      setCheckMessage('Please enter a copy ID')
+      return
+    }
+
+    setCheckLoading(true)
+
+    try {
+      const response = await fetch(`/api/librarian/check-status?copy_id=${checkCopyId}`)
+      const data = await response.json()
+
+      if (response.ok) {
+        setCheckResult(data)
+        setCheckMessage('')
+      } else {
+        setCheckMessage(`Error: ${data.error}`)
+        setCheckResult(null)
+      }
+    } catch (error) {
+      setCheckMessage('An error occurred while checking status')
+      setCheckResult(null)
+      console.error(error)
+    } finally {
+      setCheckLoading(false)
     }
   }
 
@@ -203,7 +312,7 @@ export default function LibrarianDashboard() {
           <div className="flex gap-2">
             <input
               type="text"
-              placeholder="Search by book title..."
+              placeholder="Search by book title or ISBN..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyPress={handleKeyPress}
@@ -311,6 +420,16 @@ export default function LibrarianDashboard() {
         <div className="mb-6 border-b border-gray-200">
           <nav className="-mb-px flex space-x-8">
             <button
+              onClick={() => setActiveSection('check')}
+              className={`${
+                activeSection === 'check'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+            >
+              Check Status
+            </button>
+            <button
               onClick={() => setActiveSection('borrow')}
               className={`${
                 activeSection === 'borrow'
@@ -332,6 +451,125 @@ export default function LibrarianDashboard() {
             </button>
           </nav>
         </div>
+
+        {/* Check Status Section */}
+        {activeSection === 'check' && (
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-xl font-semibold mb-4">Check Book Copy Status</h2>
+            <form onSubmit={handleCheckStatus} className="space-y-4 max-w-md">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Book Copy ID
+                </label>
+                <input
+                  type="number"
+                  required
+                  value={checkCopyId}
+                  onChange={(e) => setCheckCopyId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Enter copy ID to check status"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={checkLoading}
+                className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:bg-gray-400"
+              >
+                {checkLoading ? 'Checking...' : 'Check Status'}
+              </button>
+              {checkMessage && (
+                <div className="p-3 bg-red-50 text-red-700 rounded-md">
+                  {checkMessage}
+                </div>
+              )}
+            </form>
+
+            {/* Status Result */}
+            {checkResult && (
+              <div className="mt-6 border-t pt-6">
+                <h3 className="text-lg font-semibold mb-4">Book Details</h3>
+                <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <span className="text-sm font-medium text-gray-500">Copy ID:</span>
+                      <p className="text-sm text-gray-900">{checkResult.copy_id}</p>
+                    </div>
+                    <div>
+                      <span className="text-sm font-medium text-gray-500">ISBN:</span>
+                      <p className="text-sm text-gray-900">{checkResult.isbn}</p>
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-sm font-medium text-gray-500">Title:</span>
+                    <p className="text-base font-semibold text-gray-900">{checkResult.title}</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <span className="text-sm font-medium text-gray-500">Author(s):</span>
+                      <p className="text-sm text-gray-900">{checkResult.authors}</p>
+                    </div>
+                    <div>
+                      <span className="text-sm font-medium text-gray-500">Publisher:</span>
+                      <p className="text-sm text-gray-900">{checkResult.publisher}</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <span className="text-sm font-medium text-gray-500">Category:</span>
+                      <p className="text-sm text-gray-900">{checkResult.category}</p>
+                    </div>
+                    <div>
+                      <span className="text-sm font-medium text-gray-500">Year:</span>
+                      <p className="text-sm text-gray-900">{checkResult.publication_year || 'N/A'}</p>
+                    </div>
+                  </div>
+                  <div className="pt-3 border-t">
+                    <span className="text-sm font-medium text-gray-500">Status:</span>
+                    <div className="mt-1">
+                      {checkResult.is_available ? (
+                        <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-green-100 text-green-800">
+                          ✓ Available
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-red-100 text-red-800">
+                          ✗ Borrowed
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {checkResult.borrow_info && (
+                    <div className="pt-3 border-t bg-yellow-50 -m-4 mt-3 p-4 rounded-b-lg">
+                      <h4 className="text-sm font-semibold text-gray-900 mb-2">Current Borrower Information</h4>
+                      <div className="space-y-2 text-sm">
+                        <div>
+                          <span className="font-medium text-gray-500">Member Name:</span>
+                          <span className="ml-2 text-gray-900">{checkResult.borrow_info.member_name}</span>
+                        </div>
+                        <div>
+                          <span className="font-medium text-gray-500">Member Email:</span>
+                          <span className="ml-2 text-gray-900">{checkResult.borrow_info.member_email}</span>
+                        </div>
+                        <div>
+                          <span className="font-medium text-gray-500">Borrowed On:</span>
+                          <span className="ml-2 text-gray-900">
+                            {new Date(checkResult.borrow_info.borrow_date).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="font-medium text-gray-500">Due Date:</span>
+                          <span className="ml-2 text-gray-900 font-semibold">
+                            {new Date(checkResult.borrow_info.due_date).toLocaleDateString()}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Borrow Book Section */}
         {activeSection === 'borrow' && (
@@ -407,23 +645,79 @@ export default function LibrarianDashboard() {
                   onChange={(e) => setReturnCopyId(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Enter copy ID to return"
+                  disabled={showPaymentConfirm}
                 />
               </div>
               <button
                 type="submit"
-                className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                disabled={showPaymentConfirm}
+                className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400"
               >
                 Process Return
               </button>
               {returnMessage && (
-                <p className={`text-sm ${returnMessage.includes('Error') ? 'text-red-600' : 'text-green-600'}`}>
+                <p className={`text-sm ${returnMessage.includes('Error') ? 'text-red-600' : returnMessage.includes('\u2713') ? 'text-green-600 font-semibold' : 'text-yellow-600'}`}>
                   {returnMessage}
                 </p>
               )}
             </form>
 
+            {/* Fine Details and Payment Confirmation */}
+            {fineDetails && showPaymentConfirm && (
+              <div className="mt-6 border-t pt-6">
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+                  <h3 className="text-lg font-semibold text-red-900 mb-3">⚠️ Outstanding Fine Detected</h3>
+                  <div className="space-y-2 text-sm">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <span className="font-medium text-gray-700">Member:</span>
+                        <p className="text-gray-900">{fineDetails.member_name}</p>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-700">Email:</span>
+                        <p className="text-gray-900">{fineDetails.member_email}</p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <span className="font-medium text-gray-700">Borrowed On:</span>
+                        <p className="text-gray-900">{new Date(fineDetails.borrow_date).toLocaleDateString()}</p>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-700">Due Date:</span>
+                        <p className="text-gray-900">{new Date(fineDetails.due_date).toLocaleDateString()}</p>
+                      </div>
+                    </div>
+                    <div className="pt-3 border-t border-red-300">
+                      <div className="flex justify-between items-center">
+                        <span className="font-medium text-gray-700">Days Overdue:</span>
+                        <span className="text-red-700 font-semibold text-lg">{fineDetails.days_overdue} days</span>
+                      </div>
+                      <div className="flex justify-between items-center mt-2">
+                        <span className="font-medium text-gray-700">Fine Amount:</span>
+                        <span className="text-red-900 font-bold text-2xl">{fineDetails.fine_amount.toFixed(2)} BDT</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-4 mb-4">
+                  <p className="text-sm text-yellow-900">
+                    <strong>Instructions:</strong> Collect the fine amount of <strong>{fineDetails.fine_amount.toFixed(2)} BDT</strong> from the member before confirming payment.
+                  </p>
+                </div>
+
+                <button
+                  onClick={handleConfirmPayment}
+                  className="w-full px-4 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 font-semibold"
+                >
+                  ✓ Confirm Payment Received - Complete Return
+                </button>
+              </div>
+            )}
+
             {/* Show active borrows if any */}
-            {activeBorrows.length > 0 && (
+            {activeBorrows.length > 0 && !showPaymentConfirm && (
               <div className="mt-6">
                 <h3 className="font-semibold mb-2">Active Borrows for this Copy:</h3>
                 <div className="space-y-2">

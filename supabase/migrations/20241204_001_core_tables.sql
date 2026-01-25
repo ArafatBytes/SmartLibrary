@@ -116,3 +116,4 @@ COMMENT ON TABLE books IS 'Book catalog with metadata';
 COMMENT ON TABLE book_author IS 'Many-to-many relationship between books and authors';
 COMMENT ON TABLE users IS 'System users (Admin and Librarian roles)';
 COMMENT ON TABLE members IS 'Library members who can borrow books';
+
