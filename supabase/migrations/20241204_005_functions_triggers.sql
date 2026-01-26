@@ -23,6 +23,12 @@ DROP FUNCTION IF EXISTS trigger_generate_fine_on_return() CASCADE;
 DROP FUNCTION IF EXISTS trigger_audit_log() CASCADE;
 DROP FUNCTION IF EXISTS get_active_borrows(INTEGER) CASCADE;
 DROP FUNCTION IF EXISTS get_member_fine_summary(INTEGER) CASCADE;
+DROP FUNCTION IF EXISTS process_book_return(INTEGER, INTEGER) CASCADE;
+DROP FUNCTION IF EXISTS record_fine_payment(INTEGER, INTEGER) CASCADE;
+DROP FUNCTION IF EXISTS get_active_borrow_with_fine(INTEGER) CASCADE;
+DROP FUNCTION IF EXISTS create_borrow_transaction(INTEGER, INTEGER, DATE, INTEGER) CASCADE;
+DROP FUNCTION IF EXISTS search_books(TEXT) CASCADE;
+DROP FUNCTION IF EXISTS check_copy_status(INTEGER) CASCADE;
 
 -- =====================================================
 -- FUNCTION: Calculate and Update Fines (Weekly Job)
@@ -33,7 +39,7 @@ DECLARE
     overdue_borrow RECORD;
     days_overdue INTEGER;
     fine_amount DECIMAL(10, 2);
-    fine_rate CONSTANT DECIMAL(10, 2) := 1.00; -- $1 per day
+    fine_rate CONSTANT DECIMAL(10, 2) := 2.00; -- 2 BDT per day
 BEGIN
     -- Find all borrows that are overdue and not returned
     FOR overdue_borrow IN
@@ -132,7 +138,7 @@ CREATE TRIGGER tr_after_return_update_copy_status
 COMMENT ON FUNCTION trigger_update_copy_status_on_return() IS 'Automatically sets book_copy status to Available when a return transaction is created';
 
 -- =====================================================
--- FUNCTION: Process Book Return with Fine Calculation
+-- FUNCTION: Process Book Return (Only if no fine or fine is paid)
 -- =====================================================
 CREATE OR REPLACE FUNCTION process_book_return(
     p_copy_id INTEGER,
@@ -143,17 +149,17 @@ RETURNS TABLE(
     return_id INTEGER,
     fine_amount DECIMAL(10, 2),
     message TEXT
-) AS $$
+)
+SECURITY DEFINER
+AS $$
 DECLARE
     v_borrow_id INTEGER;
-    v_due_date DATE;
-    v_days_overdue INTEGER;
-    v_fine_amount DECIMAL(10, 2);
-    v_fine_id INTEGER;
     v_return_id INTEGER;
+    v_fine_id INTEGER;
+    v_payment_exists BOOLEAN;
 BEGIN
     -- Find active borrow for this copy
-    SELECT bt.borrow_id, bt.due_date INTO v_borrow_id, v_due_date
+    SELECT bt.borrow_id INTO v_borrow_id
     FROM borrow_transactions bt
     WHERE bt.copy_id = p_copy_id
       AND NOT EXISTS (
@@ -170,33 +176,24 @@ BEGIN
         RETURN;
     END IF;
 
-    -- Calculate fine if overdue
-    v_days_overdue := CURRENT_DATE - v_due_date;
-    IF v_days_overdue > 0 THEN
-        v_fine_amount := v_days_overdue * 2; -- 2 BDT per day
+    -- Check if there's a fine for this borrow
+    SELECT fine_id INTO v_fine_id
+    FROM fines
+    WHERE borrow_id = v_borrow_id;
 
-        -- Check if fine exists, update or create
-        SELECT fine_id INTO v_fine_id
-        FROM fines
-        WHERE borrow_id = v_borrow_id;
-
-        IF v_fine_id IS NOT NULL THEN
-            -- Update existing fine
-            UPDATE fines
-            SET amount = v_fine_amount,
-                updated_at = NOW()
-            WHERE fine_id = v_fine_id;
-        ELSE
-            -- Create new fine
-            INSERT INTO fines (borrow_id, amount)
-            VALUES (v_borrow_id, v_fine_amount)
-            RETURNING fine_id INTO v_fine_id;
+    -- If fine exists, check if it's paid
+    IF v_fine_id IS NOT NULL THEN
+        SELECT EXISTS(SELECT 1 FROM payments WHERE fine_id = v_fine_id) INTO v_payment_exists;
+        
+        IF NOT v_payment_exists THEN
+            success := FALSE;
+            message := 'Fine must be paid before completing return';
+            RETURN NEXT;
+            RETURN;
         END IF;
-    ELSE
-        v_fine_amount := 0;
     END IF;
 
-    -- Create return transaction
+    -- All clear - process return
     INSERT INTO return_transactions (borrow_id, librarian_id, return_date)
     VALUES (v_borrow_id, p_librarian_id, NOW())
     RETURNING return_transactions.return_id INTO v_return_id;
@@ -209,11 +206,8 @@ BEGIN
 
     success := TRUE;
     return_id := v_return_id;
-    fine_amount := COALESCE(v_fine_amount, 0);
-    message := CASE 
-        WHEN v_fine_amount > 0 THEN 'Book returned. Fine: ' || v_fine_amount || ' BDT'
-        ELSE 'Book returned successfully'
-    END;
+    fine_amount := 0;
+    message := 'Book returned successfully';
 
     RETURN NEXT;
 END;
@@ -230,7 +224,9 @@ RETURNS TABLE(
     success BOOLEAN,
     payment_id INTEGER,
     message TEXT
-) AS $$
+)
+SECURITY DEFINER
+AS $$
 DECLARE
     v_payment_id INTEGER;
     v_existing_payment INTEGER;
@@ -261,7 +257,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- =====================================================
--- FUNCTION: Get Active Borrow with Fine Details
+-- FUNCTION: Get Active Borrow with Fine Details (Creates/Updates Fine if Overdue)
 -- =====================================================
 CREATE OR REPLACE FUNCTION get_active_borrow_with_fine(
     p_copy_id INTEGER
@@ -271,14 +267,63 @@ RETURNS TABLE(
     member_id INTEGER,
     member_name VARCHAR,
     member_email VARCHAR,
-    borrow_date TIMESTAMP,
+    borrow_date TIMESTAMP WITH TIME ZONE,
     due_date DATE,
     days_overdue INTEGER,
     fine_amount DECIMAL(10, 2),
     fine_id INTEGER,
     payment_exists BOOLEAN
-) AS $$
+)
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_borrow_id INTEGER;
+    v_due_date DATE;
+    v_days_overdue INTEGER;
+    v_fine_amount DECIMAL(10, 2);
+    v_fine_id_temp INTEGER;
 BEGIN
+    -- Get active borrow
+    SELECT bt.borrow_id, bt.due_date INTO v_borrow_id, v_due_date
+    FROM borrow_transactions bt
+    WHERE bt.copy_id = p_copy_id
+      AND NOT EXISTS (
+          SELECT 1 FROM return_transactions rt 
+          WHERE rt.borrow_id = bt.borrow_id
+      )
+    ORDER BY bt.borrow_date DESC
+    LIMIT 1;
+
+    IF v_borrow_id IS NULL THEN
+        RETURN;
+    END IF;
+
+    -- Calculate if overdue
+    v_days_overdue := CURRENT_DATE - v_due_date;
+    
+    IF v_days_overdue > 0 THEN
+        v_fine_amount := v_days_overdue * 2; -- 2 BDT per day
+        
+        -- Check if fine exists
+        SELECT fines.fine_id INTO v_fine_id_temp
+        FROM fines
+        WHERE fines.borrow_id = v_borrow_id;
+        
+        IF v_fine_id_temp IS NOT NULL THEN
+            -- Update existing fine amount
+            UPDATE fines
+            SET amount = v_fine_amount,
+                updated_at = NOW()
+            WHERE fines.fine_id = v_fine_id_temp;
+        ELSE
+            -- Create new fine
+            INSERT INTO fines (borrow_id, amount)
+            VALUES (v_borrow_id, v_fine_amount)
+            RETURNING fines.fine_id INTO v_fine_id_temp;
+        END IF;
+    END IF;
+
+    -- Return full details
     RETURN QUERY
     SELECT 
         bt.borrow_id,
@@ -305,6 +350,163 @@ BEGIN
       )
     ORDER BY bt.borrow_date DESC
     LIMIT 1;
+END;
+$$ LANGUAGE plpgsql;
+
+-- =====================================================
+-- FUNCTION: Create Borrow Transaction
+-- =====================================================
+CREATE OR REPLACE FUNCTION create_borrow_transaction(
+    p_copy_id INTEGER,
+    p_member_id INTEGER,
+    p_due_date DATE,
+    p_librarian_id INTEGER
+)
+RETURNS TABLE(
+    success BOOLEAN,
+    borrow_id INTEGER,
+    message TEXT
+)
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_borrow_id INTEGER;
+    v_copy_status VARCHAR(20);
+BEGIN
+    -- Check if copy exists and is available
+    SELECT status INTO v_copy_status
+    FROM book_copies
+    WHERE copy_id = p_copy_id;
+
+    IF v_copy_status IS NULL THEN
+        success := FALSE;
+        message := 'Book copy not found';
+        RETURN NEXT;
+        RETURN;
+    END IF;
+
+    IF v_copy_status != 'Available' THEN
+        success := FALSE;
+        message := 'Book copy is not available';
+        RETURN NEXT;
+        RETURN;
+    END IF;
+
+    -- Create borrow transaction
+    INSERT INTO borrow_transactions (copy_id, member_id, due_date, librarian_id, borrow_date)
+    VALUES (p_copy_id, p_member_id, p_due_date, p_librarian_id, NOW())
+    RETURNING borrow_transactions.borrow_id INTO v_borrow_id;
+
+    -- Update book copy status (trigger will handle this, but doing explicitly for safety)
+    UPDATE book_copies
+    SET status = 'Borrowed',
+        updated_at = NOW()
+    WHERE copy_id = p_copy_id;
+
+    success := TRUE;
+    borrow_id := v_borrow_id;
+    message := 'Book borrowed successfully';
+
+    RETURN NEXT;
+END;
+$$ LANGUAGE plpgsql;
+
+-- =====================================================
+-- FUNCTION: Search Books
+-- =====================================================
+CREATE OR REPLACE FUNCTION search_books(
+    p_search_query TEXT
+)
+RETURNS TABLE(
+    isbn VARCHAR,
+    title VARCHAR,
+    authors TEXT,
+    publisher VARCHAR,
+    category VARCHAR,
+    publication_year INTEGER,
+    available_copies BIGINT,
+    total_copies BIGINT,
+    is_available BOOLEAN
+)
+SECURITY DEFINER
+AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        b.isbn,
+        b.title,
+        STRING_AGG(DISTINCT a.name, ', ' ORDER BY a.name) as authors,
+        b.publisher,
+        c.name as category,
+        b.publication_year,
+        COUNT(DISTINCT CASE WHEN bc.status = 'Available' THEN bc.copy_id END) as available_copies,
+        COUNT(DISTINCT bc.copy_id) as total_copies,
+        COUNT(DISTINCT CASE WHEN bc.status = 'Available' THEN bc.copy_id END) > 0 as is_available
+    FROM books b
+    LEFT JOIN book_author ba ON b.isbn = ba.isbn
+    LEFT JOIN authors a ON ba.author_id = a.author_id
+    LEFT JOIN categories c ON b.category_id = c.category_id
+    LEFT JOIN book_copies bc ON b.isbn = bc.isbn
+    WHERE 
+        b.title ILIKE '%' || p_search_query || '%'
+        OR b.isbn ILIKE '%' || p_search_query || '%'
+    GROUP BY b.isbn, b.title, b.publisher, c.name, b.publication_year
+    ORDER BY b.title;
+END;
+$$ LANGUAGE plpgsql;
+
+-- =====================================================
+-- FUNCTION: Check Book Copy Status
+-- =====================================================
+CREATE OR REPLACE FUNCTION check_copy_status(
+    p_copy_id INTEGER
+)
+RETURNS TABLE(
+    copy_id INTEGER,
+    isbn VARCHAR,
+    title VARCHAR,
+    authors TEXT,
+    publisher VARCHAR,
+    category VARCHAR,
+    publication_year INTEGER,
+    status VARCHAR,
+    is_available BOOLEAN,
+    borrow_id INTEGER,
+    borrow_date TIMESTAMP WITH TIME ZONE,
+    due_date DATE,
+    member_name VARCHAR,
+    member_email VARCHAR
+)
+SECURITY DEFINER
+AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        bc.copy_id,
+        b.isbn,
+        b.title,
+        STRING_AGG(DISTINCT a.name, ', ' ORDER BY a.name) as authors,
+        b.publisher,
+        c.name as category,
+        b.publication_year,
+        bc.status,
+        bc.status = 'Available' as is_available,
+        bt.borrow_id,
+        bt.borrow_date,
+        bt.due_date,
+        m.name as member_name,
+        m.email as member_email
+    FROM book_copies bc
+    JOIN books b ON bc.isbn = b.isbn
+    LEFT JOIN book_author ba ON b.isbn = ba.isbn
+    LEFT JOIN authors a ON ba.author_id = a.author_id
+    LEFT JOIN categories c ON b.category_id = c.category_id
+    LEFT JOIN borrow_transactions bt ON bc.copy_id = bt.copy_id 
+        AND NOT EXISTS (SELECT 1 FROM return_transactions rt WHERE rt.borrow_id = bt.borrow_id)
+    LEFT JOIN members m ON bt.member_id = m.member_id
+    WHERE bc.copy_id = p_copy_id
+    GROUP BY bc.copy_id, b.isbn, b.title, b.publisher, c.name, b.publication_year, 
+             bc.status, bt.borrow_id, bt.borrow_date, bt.due_date, m.name, m.email;
 END;
 $$ LANGUAGE plpgsql;
 

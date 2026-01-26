@@ -14,65 +14,54 @@ export async function POST(request: Request) {
 
     const supabase = await createClient()
 
-    // Check if copy is available
-    const { data: copy, error: copyError } = await supabase
-      .from('book_copies')
-      .select('status')
-      .eq('copy_id', copy_id)
-      .single()
-
-    if (copyError || !copy) {
-      return NextResponse.json({ error: 'Book copy not found' }, { status: 404 })
-    }
-
-    if (copy.status !== 'Available') {
-      return NextResponse.json(
-        { error: 'Book copy is not available' },
-        { status: 400 }
-      )
-    }
-
     // Calculate due_date: Default 4 months from today, or use provided date
-    const borrowDate = new Date()
     let calculatedDueDate: string
     
     if (due_date) {
       calculatedDueDate = due_date
     } else {
-      // Add 4 months to borrow date
-      const dueDateObj = new Date(borrowDate)
+      // Add 4 months to today
+      const dueDateObj = new Date()
       dueDateObj.setMonth(dueDateObj.getMonth() + 4)
       calculatedDueDate = dueDateObj.toISOString().split('T')[0] // YYYY-MM-DD format
     }
 
-    // Create borrow transaction
-    const { data: borrow, error: borrowError } = await supabase
-      .from('borrow_transactions')
-      .insert({
-        member_id,
-        copy_id,
-        librarian_id: librarian_id || null,
-        due_date: calculatedDueDate,
-        borrow_date: borrowDate.toISOString()
+    // Use PL/pgSQL function to create borrow transaction
+    const { data: result, error: borrowError } = await supabase
+      .rpc('create_borrow_transaction', {
+        p_copy_id: copy_id,
+        p_member_id: member_id,
+        p_due_date: calculatedDueDate,
+        p_librarian_id: librarian_id || null
       })
-      .select()
-      .single()
 
     if (borrowError) {
-      return NextResponse.json({ error: borrowError.message }, { status: 500 })
+      console.error('Borrow error:', borrowError)
+      return NextResponse.json({
+        error: 'Failed to create borrow transaction',
+        details: borrowError.message
+      }, { status: 500 })
     }
 
-    // Update book copy status to Borrowed
-    await supabase
-      .from('book_copies')
-      .update({ status: 'Borrowed' })
-      .eq('copy_id', copy_id)
+    if (result && result.length > 0) {
+      const borrowResult = result[0]
+      if (!borrowResult.success) {
+        return NextResponse.json({
+          error: borrowResult.message
+        }, { status: 400 })
+      }
+
+      return NextResponse.json({
+        success: true,
+        borrow_id: borrowResult.borrow_id,
+        message: `${borrowResult.message}. Due date: ${calculatedDueDate}`
+      })
+    }
 
     return NextResponse.json({
-      success: true,
-      borrow,
-      message: `Book borrowed successfully. Due date: ${calculatedDueDate}`
-    })
+      error: 'Unexpected error during borrow processing'
+    }, { status: 500 })
+
   } catch (error) {
     console.error('Borrow error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
