@@ -65,7 +65,7 @@ export default function LibrarianDashboard() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [searchLoading, setSearchLoading] = useState(false)
-  const [activeSection, setActiveSection] = useState<'borrow' | 'return' | 'check'>('check')
+  const [activeSection, setActiveSection] = useState<'borrow' | 'return' | 'check' | 'manage'>('check')
 
   // Borrow form
   const [borrowCopyId, setBorrowCopyId] = useState('')
@@ -86,6 +86,22 @@ export default function LibrarianDashboard() {
   const [checkLoading, setCheckLoading] = useState(false)
   const [checkMessage, setCheckMessage] = useState('')
 
+  // Book management
+  const [categories, setCategories] = useState<{ category_id: number; name: string }[]>([])
+  const [newBookIsbn, setNewBookIsbn] = useState('')
+  const [newBookTitle, setNewBookTitle] = useState('')
+  const [newBookPublisher, setNewBookPublisher] = useState('')
+  const [newBookAuthors, setNewBookAuthors] = useState('')
+  const [newBookCategory, setNewBookCategory] = useState('')
+  const [newBookYear, setNewBookYear] = useState('')
+  const [newBookDescription, setNewBookDescription] = useState('')
+  const [addBookLoading, setAddBookLoading] = useState(false)
+  const [addBookMessage, setAddBookMessage] = useState('')
+  
+  const [removeCopyId, setRemoveCopyId] = useState('')
+  const [removeBookLoading, setRemoveBookLoading] = useState(false)
+  const [removeBookMessage, setRemoveBookMessage] = useState('')
+
   useEffect(() => {
     // Get user session from cookie
     const cookies = document.cookie.split(';')
@@ -103,6 +119,25 @@ export default function LibrarianDashboard() {
       }
     }
   }, [router])
+
+  useEffect(() => {
+    // Fetch categories when manage tab is opened
+    if (activeSection === 'manage' && categories.length === 0) {
+      fetchCategories()
+    }
+  }, [activeSection])
+
+  const fetchCategories = async () => {
+    try {
+      const response = await fetch('/api/librarian/categories')
+      const data = await response.json()
+      if (response.ok) {
+        setCategories(data.categories || [])
+      }
+    } catch (error) {
+      console.error('Failed to fetch categories:', error)
+    }
+  }
 
   const handleLogout = async () => {
     try {
@@ -220,6 +255,95 @@ export default function LibrarianDashboard() {
     } catch (error) {
       setReturnMessage('An error occurred')
       console.error(error)
+    }
+  }
+
+  const handleAddBook = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setAddBookMessage('')
+    setAddBookLoading(true)
+
+    // Validate inputs
+    if (!newBookIsbn.trim() || !newBookTitle.trim() || !newBookAuthors.trim()) {
+      setAddBookMessage('ISBN, Title, and Authors are required')
+      setAddBookLoading(false)
+      return
+    }
+
+    // Parse authors (comma-separated)
+    const authorArray = newBookAuthors.split(',').map(a => a.trim()).filter(a => a !== '')
+
+    try {
+      const response = await fetch('/api/librarian/add-book', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          isbn: newBookIsbn.trim(),
+          title: newBookTitle.trim(),
+          publisher: newBookPublisher.trim() || 'Unknown',
+          authors: authorArray,
+          category_id: newBookCategory ? parseInt(newBookCategory) : null,
+          publication_year: newBookYear ? parseInt(newBookYear) : null,
+          description: newBookDescription.trim() || null
+        })
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setAddBookMessage(`✓ ${data.message} (Copy ID: ${data.copy_id})`)
+        // Clear form
+        setNewBookIsbn('')
+        setNewBookTitle('')
+        setNewBookPublisher('')
+        setNewBookAuthors('')
+        setNewBookCategory('')
+        setNewBookYear('')
+        setNewBookDescription('')
+      } else {
+        setAddBookMessage(`✗ ${data.error}`)
+      }
+    } catch (error) {
+      console.error('Add book error:', error)
+      setAddBookMessage('✗ Failed to add book')
+    } finally {
+      setAddBookLoading(false)
+    }
+  }
+
+  const handleRemoveBook = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setRemoveBookMessage('')
+    setRemoveBookLoading(true)
+
+    if (!removeCopyId.trim()) {
+      setRemoveBookMessage('Copy ID is required')
+      setRemoveBookLoading(false)
+      return
+    }
+
+    try {
+      const response = await fetch('/api/librarian/remove-book', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          copy_id: parseInt(removeCopyId)
+        })
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setRemoveBookMessage(`✓ ${data.message} (ISBN: ${data.isbn})`)
+        setRemoveCopyId('')
+      } else {
+        setRemoveBookMessage(`✗ ${data.error}`)
+      }
+    } catch (error) {
+      console.error('Remove book error:', error)
+      setRemoveBookMessage('✗ Failed to remove book copy')
+    } finally {
+      setRemoveBookLoading(false)
     }
   }
 
@@ -448,6 +572,16 @@ export default function LibrarianDashboard() {
               } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
             >
               Return Book
+            </button>
+            <button
+              onClick={() => setActiveSection('manage')}
+              className={`${
+                activeSection === 'manage'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+            >
+              Add/Remove Books
             </button>
           </nav>
         </div>
@@ -731,6 +865,182 @@ export default function LibrarianDashboard() {
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Manage Books Section */}
+        {activeSection === 'manage' && (
+          <div className="space-y-6">
+            {/* Add New Book */}
+            <div className="bg-white rounded-lg shadow p-6">
+              <h2 className="text-xl font-semibold mb-4 text-green-700">➕ Add New Book</h2>
+              <form onSubmit={handleAddBook} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      ISBN <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={newBookIsbn}
+                      onChange={(e) => setNewBookIsbn(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                      placeholder="978-0-123456-78-9"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Title <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={newBookTitle}
+                      onChange={(e) => setNewBookTitle(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                      placeholder="Book Title"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Author(s) <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={newBookAuthors}
+                      onChange={(e) => setNewBookAuthors(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                      placeholder="Author Name, Another Author"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Separate multiple authors with commas</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Publisher
+                    </label>
+                    <input
+                      type="text"
+                      value={newBookPublisher}
+                      onChange={(e) => setNewBookPublisher(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                      placeholder="Publisher Name"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Category
+                    </label>
+                    <select
+                      value={newBookCategory}
+                      onChange={(e) => setNewBookCategory(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                    >
+                      <option value="">Select Category</option>
+                      {categories.map((cat) => (
+                        <option key={cat.category_id} value={cat.category_id}>
+                          {cat.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Publication Year
+                    </label>
+                    <input
+                      type="number"
+                      min="1000"
+                      max="2100"
+                      value={newBookYear}
+                      onChange={(e) => setNewBookYear(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                      placeholder="2024"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Description
+                  </label>
+                  <textarea
+                    value={newBookDescription}
+                    onChange={(e) => setNewBookDescription(e.target.value)}
+                    rows={3}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                    placeholder="Brief description of the book (optional)"
+                  />
+                </div>
+
+                <div className="bg-blue-50 border border-blue-300 rounded-lg p-3">
+                  <p className="text-sm text-blue-900">
+                    <strong>Note:</strong> If the book already exists, a new copy will be added. If authors don't exist, they will be created automatically.
+                  </p>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={addBookLoading}
+                  className="w-full bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 disabled:bg-gray-400 font-medium"
+                >
+                  {addBookLoading ? 'Adding Book...' : '➕ Add Book & Create Copy'}
+                </button>
+
+                {addBookMessage && (
+                  <div className={`p-3 rounded-md ${addBookMessage.startsWith('✓') ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                    {addBookMessage}
+                  </div>
+                )}
+              </form>
+            </div>
+
+            {/* Remove Book Copy */}
+            <div className="bg-white rounded-lg shadow p-6">
+              <h2 className="text-xl font-semibold mb-4 text-red-700">🗑️ Remove Book Copy</h2>
+              <form onSubmit={handleRemoveBook} className="space-y-4 max-w-md">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Book Copy ID <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    value={removeCopyId}
+                    onChange={(e) => setRemoveCopyId(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+                    placeholder="Enter copy ID to remove"
+                  />
+                </div>
+
+                <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-3">
+                  <p className="text-sm text-yellow-900">
+                    <strong>Warning:</strong> This will mark the book copy as "Lost" (unavailable). The copy cannot be removed if it's currently borrowed.
+                  </p>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={removeBookLoading}
+                  className="w-full bg-red-600 text-white py-2 px-4 rounded-md hover:bg-red-700 disabled:bg-gray-400 font-medium"
+                >
+                  {removeBookLoading ? 'Removing...' : '🗑️ Mark as Unavailable'}
+                </button>
+
+                {removeBookMessage && (
+                  <div className={`p-3 rounded-md ${removeBookMessage.startsWith('✓') ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                    {removeBookMessage}
+                  </div>
+                )}
+              </form>
+            </div>
           </div>
         )}
       </div>
