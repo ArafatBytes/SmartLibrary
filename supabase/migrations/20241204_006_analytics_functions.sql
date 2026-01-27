@@ -9,6 +9,14 @@ DROP FUNCTION IF EXISTS get_members_highest_overdue() CASCADE;
 DROP FUNCTION IF EXISTS get_circulation_stats(DATE, DATE) CASCADE;
 DROP FUNCTION IF EXISTS get_inventory_health() CASCADE;
 DROP FUNCTION IF EXISTS get_fine_collection_summary(DATE, DATE) CASCADE;
+DROP FUNCTION IF EXISTS get_fines_collected_per_month() CASCADE;
+DROP FUNCTION IF EXISTS get_top_borrowed_books(INTEGER) CASCADE;
+DROP FUNCTION IF EXISTS get_category_wise_borrows() CASCADE;
+DROP FUNCTION IF EXISTS get_most_active_members(INTEGER) CASCADE;
+DROP FUNCTION IF EXISTS get_book_availability() CASCADE;
+DROP FUNCTION IF EXISTS get_never_borrowed_books() CASCADE;
+DROP FUNCTION IF EXISTS get_overdue_books_today() CASCADE;
+DROP FUNCTION IF EXISTS get_librarian_activity() CASCADE;
 
 -- Function to count active borrows
 CREATE OR REPLACE FUNCTION count_active_borrows()
@@ -234,7 +242,262 @@ BEGIN
 END;
 $$;
 
--- Grant execute permissions to authenticated users
+-- =====================================================
+-- FUNCTION: Get Fines Collected Per Month
+-- =====================================================
+CREATE OR REPLACE FUNCTION get_fines_collected_per_month()
+RETURNS TABLE (
+    month TEXT,
+    total_amount NUMERIC
+)
+SECURITY DEFINER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        TO_CHAR(p.payment_date, 'YYYY-MM')::TEXT AS month,
+        SUM(f.amount)::NUMERIC AS total_amount
+    FROM payments p
+    JOIN fines f ON p.fine_id = f.fine_id
+    WHERE p.payment_date >= CURRENT_DATE - INTERVAL '12 months'
+    GROUP BY TO_CHAR(p.payment_date, 'YYYY-MM')
+    ORDER BY month DESC;
+END;
+$$;
+
+-- =====================================================
+-- FUNCTION: Get Top K Borrowed Books
+-- =====================================================
+CREATE OR REPLACE FUNCTION get_top_borrowed_books(p_limit INTEGER DEFAULT 10)
+RETURNS TABLE (
+    isbn VARCHAR,
+    title VARCHAR,
+    category VARCHAR,
+    borrow_count BIGINT
+)
+SECURITY DEFINER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        b.isbn,
+        b.title,
+        COALESCE(c.name, 'Unknown')::VARCHAR AS category,
+        COUNT(bt.borrow_id)::BIGINT AS borrow_count
+    FROM borrow_transactions bt
+    JOIN book_copies bc ON bt.copy_id = bc.copy_id
+    JOIN books b ON bc.isbn = b.isbn
+    LEFT JOIN categories c ON b.category_id = c.category_id
+    GROUP BY b.isbn, b.title, c.name
+    ORDER BY borrow_count DESC
+    LIMIT p_limit;
+END;
+$$;
+
+-- =====================================================
+-- FUNCTION: Get Category-Wise Borrow Counts
+-- =====================================================
+CREATE OR REPLACE FUNCTION get_category_wise_borrows()
+RETURNS TABLE (
+    category VARCHAR,
+    borrow_count BIGINT
+)
+SECURITY DEFINER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        COALESCE(c.name, 'Unknown')::VARCHAR AS category,
+        COUNT(bt.borrow_id)::BIGINT AS borrow_count
+    FROM borrow_transactions bt
+    JOIN book_copies bc ON bt.copy_id = bc.copy_id
+    JOIN books b ON bc.isbn = b.isbn
+    LEFT JOIN categories c ON b.category_id = c.category_id
+    GROUP BY c.name
+    ORDER BY borrow_count DESC;
+END;
+$$;
+
+-- =====================================================
+-- FUNCTION: Get Most Active Members
+-- =====================================================
+CREATE OR REPLACE FUNCTION get_most_active_members(p_limit INTEGER DEFAULT 10)
+RETURNS TABLE (
+    member_id INTEGER,
+    name VARCHAR,
+    email VARCHAR,
+    total_borrows BIGINT
+)
+SECURITY DEFINER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        m.member_id,
+        m.name,
+        m.email,
+        COUNT(bt.borrow_id)::BIGINT AS total_borrows
+    FROM members m
+    JOIN borrow_transactions bt ON m.member_id = bt.member_id
+    GROUP BY m.member_id, m.name, m.email
+    ORDER BY total_borrows DESC
+    LIMIT p_limit;
+END;
+$$;
+
+-- =====================================================
+-- FUNCTION: Get Book Availability Report
+-- =====================================================
+CREATE OR REPLACE FUNCTION get_book_availability()
+RETURNS TABLE (
+    isbn VARCHAR,
+    title VARCHAR,
+    total_copies BIGINT,
+    available BIGINT,
+    borrowed BIGINT,
+    lost BIGINT
+)
+SECURITY DEFINER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        b.isbn,
+        b.title,
+        COUNT(bc.copy_id)::BIGINT AS total_copies,
+        COUNT(bc.copy_id) FILTER (WHERE bc.status = 'Available')::BIGINT AS available,
+        COUNT(bc.copy_id) FILTER (WHERE bc.status = 'Borrowed')::BIGINT AS borrowed,
+        COUNT(bc.copy_id) FILTER (WHERE bc.status = 'Lost')::BIGINT AS lost
+    FROM books b
+    LEFT JOIN book_copies bc ON b.isbn = bc.isbn
+    GROUP BY b.isbn, b.title
+    ORDER BY b.title;
+END;
+$$;
+
+-- =====================================================
+-- FUNCTION: Get Books Never Borrowed
+-- =====================================================
+CREATE OR REPLACE FUNCTION get_never_borrowed_books()
+RETURNS TABLE (
+    isbn VARCHAR,
+    title VARCHAR,
+    publication_year INTEGER,
+    category VARCHAR,
+    total_copies BIGINT
+)
+SECURITY DEFINER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        b.isbn,
+        b.title,
+        b.publication_year,
+        COALESCE(c.name, 'Unknown')::VARCHAR AS category,
+        COUNT(bc.copy_id)::BIGINT AS total_copies
+    FROM books b
+    LEFT JOIN categories c ON b.category_id = c.category_id
+    LEFT JOIN book_copies bc ON b.isbn = bc.isbn
+    WHERE NOT EXISTS (
+        SELECT 1 
+        FROM book_copies bc2
+        JOIN borrow_transactions bt ON bc2.copy_id = bt.copy_id
+        WHERE bc2.isbn = b.isbn
+    )
+    GROUP BY b.isbn, b.title, b.publication_year, c.name
+    ORDER BY b.title;
+END;
+$$;
+
+-- =====================================================
+-- FUNCTION: Get Overdue Books Today
+-- =====================================================
+CREATE OR REPLACE FUNCTION get_overdue_books_today()
+RETURNS TABLE (
+    borrow_id INTEGER,
+    member_name VARCHAR,
+    member_email VARCHAR,
+    book_title VARCHAR,
+    isbn VARCHAR,
+    copy_id INTEGER,
+    borrow_date TIMESTAMP WITH TIME ZONE,
+    due_date DATE,
+    days_overdue INTEGER
+)
+SECURITY DEFINER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        bt.borrow_id,
+        m.name AS member_name,
+        m.email AS member_email,
+        b.title AS book_title,
+        b.isbn,
+        bt.copy_id,
+        bt.borrow_date,
+        bt.due_date,
+        (CURRENT_DATE - bt.due_date)::INTEGER AS days_overdue
+    FROM borrow_transactions bt
+    JOIN members m ON bt.member_id = m.member_id
+    JOIN book_copies bc ON bt.copy_id = bc.copy_id
+    JOIN books b ON bc.isbn = b.isbn
+    WHERE NOT EXISTS (
+        SELECT 1 FROM return_transactions rt 
+        WHERE rt.borrow_id = bt.borrow_id
+    )
+    AND bt.due_date < CURRENT_DATE
+    ORDER BY days_overdue DESC;
+END;
+$$;
+
+-- =====================================================
+-- FUNCTION: Get Librarian Activity Report
+-- =====================================================
+CREATE OR REPLACE FUNCTION get_librarian_activity()
+RETURNS TABLE (
+    user_id INTEGER,
+    username VARCHAR,
+    email VARCHAR,
+    borrows_handled BIGINT,
+    returns_handled BIGINT,
+    payments_received BIGINT,
+    total_transactions BIGINT
+)
+SECURITY DEFINER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        u.user_id,
+        u.username,
+        u.email,
+        COUNT(DISTINCT bt.borrow_id)::BIGINT AS borrows_handled,
+        COUNT(DISTINCT rt.return_id)::BIGINT AS returns_handled,
+        COUNT(DISTINCT p.payment_id)::BIGINT AS payments_received,
+        (COUNT(DISTINCT bt.borrow_id) + COUNT(DISTINCT rt.return_id) + COUNT(DISTINCT p.payment_id))::BIGINT AS total_transactions
+    FROM users u
+    LEFT JOIN borrow_transactions bt ON u.user_id = bt.librarian_id
+    LEFT JOIN return_transactions rt ON u.user_id = rt.librarian_id
+    LEFT JOIN payments p ON u.user_id = p.received_by
+    WHERE u.role = 'Librarian'
+    GROUP BY u.user_id, u.username, u.email
+    ORDER BY total_transactions DESC;
+END;
+$$;
+
+-- =====================================================
+-- GRANT PERMISSIONS
+-- =====================================================
 GRANT EXECUTE ON FUNCTION count_active_borrows() TO authenticated;
 GRANT EXECUTE ON FUNCTION count_overdue_books() TO authenticated;
 GRANT EXECUTE ON FUNCTION get_monthly_borrowing_trend() TO authenticated;
@@ -242,7 +505,18 @@ GRANT EXECUTE ON FUNCTION get_members_highest_overdue() TO authenticated;
 GRANT EXECUTE ON FUNCTION get_circulation_stats(DATE, DATE) TO authenticated;
 GRANT EXECUTE ON FUNCTION get_inventory_health() TO authenticated;
 GRANT EXECUTE ON FUNCTION get_fine_collection_summary(DATE, DATE) TO authenticated;
+GRANT EXECUTE ON FUNCTION get_fines_collected_per_month() TO authenticated;
+GRANT EXECUTE ON FUNCTION get_top_borrowed_books(INTEGER) TO authenticated;
+GRANT EXECUTE ON FUNCTION get_category_wise_borrows() TO authenticated;
+GRANT EXECUTE ON FUNCTION get_most_active_members(INTEGER) TO authenticated;
+GRANT EXECUTE ON FUNCTION get_book_availability() TO authenticated;
+GRANT EXECUTE ON FUNCTION get_never_borrowed_books() TO authenticated;
+GRANT EXECUTE ON FUNCTION get_overdue_books_today() TO authenticated;
+GRANT EXECUTE ON FUNCTION get_librarian_activity() TO authenticated;
 
+-- =====================================================
+-- COMMENTS
+-- =====================================================
 COMMENT ON FUNCTION count_active_borrows() IS 'Returns count of books currently borrowed (not yet returned)';
 COMMENT ON FUNCTION count_overdue_books() IS 'Returns count of books past their due date and not returned';
 COMMENT ON FUNCTION get_monthly_borrowing_trend() IS 'Returns borrowing statistics per month for the last 12 months';
@@ -250,3 +524,11 @@ COMMENT ON FUNCTION get_members_highest_overdue() IS 'Returns top 20 members wit
 COMMENT ON FUNCTION get_circulation_stats(DATE, DATE) IS 'Returns circulation statistics for a date range';
 COMMENT ON FUNCTION get_inventory_health() IS 'Returns overall inventory health metrics';
 COMMENT ON FUNCTION get_fine_collection_summary(DATE, DATE) IS 'Returns fine generation and collection summary for a date range';
+COMMENT ON FUNCTION get_fines_collected_per_month() IS 'Returns fines collected grouped by month for last 12 months';
+COMMENT ON FUNCTION get_top_borrowed_books(INTEGER) IS 'Returns top K most borrowed books';
+COMMENT ON FUNCTION get_category_wise_borrows() IS 'Returns borrow counts grouped by category';
+COMMENT ON FUNCTION get_most_active_members(INTEGER) IS 'Returns top K most active members by borrow count';
+COMMENT ON FUNCTION get_book_availability() IS 'Returns availability status for all books';
+COMMENT ON FUNCTION get_never_borrowed_books() IS 'Returns books that have never been borrowed';
+COMMENT ON FUNCTION get_overdue_books_today() IS 'Returns all currently overdue books';
+COMMENT ON FUNCTION get_librarian_activity() IS 'Returns activity statistics for all librarians';
