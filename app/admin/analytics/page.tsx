@@ -32,11 +32,11 @@ export default function AdminAnalyticsPage() {
   const fetchReport = async (type: string) => {
     setLoading(true)
     setError('')
-    
+
     try {
       const res = await fetch(`/api/admin/analytics?type=${type}`)
       const result = await res.json()
-      
+
       if (!res.ok) {
         setError(result.error || 'Failed to fetch report')
       } else {
@@ -50,19 +50,38 @@ export default function AdminAnalyticsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-7xl mx-auto">
-        <h1 className="text-3xl font-bold text-gray-900 mb-8">Admin Analytics Dashboard</h1>
-        
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <header className="bg-white border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex justify-between items-center">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => window.location.href = '/admin'}
+              className="p-2 -ml-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-colors"
+              title="Back to Dashboard"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+              </svg>
+            </button>
+            <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+              Analytics & Reports
+            </h1>
+          </div>
+        </div>
+      </header>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
         {/* Report Type Selector */}
-        <div className="bg-white rounded-lg shadow mb-8 p-6">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-8 p-6">
           <label className="block text-sm font-medium text-gray-700 mb-3">
             Select Report Type
           </label>
           <select
             value={reportType}
             onChange={(e) => setReportType(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
           >
             <option value="overview">Overview Statistics</option>
             <option value="monthly-borrowing">Monthly Borrowing Trend</option>
@@ -99,13 +118,13 @@ export default function AdminAnalyticsPage() {
               <h2 className="text-xl font-semibold text-gray-900">{data.report_type?.replace(/_/g, ' ').toUpperCase()}</h2>
               <p className="text-sm text-gray-500 mt-1">Generated at: {new Date(data.generated_at).toLocaleString()}</p>
             </div>
-            
+
             <div className="p-6">
               {/* Overview Stats */}
               {reportType === 'overview' && data.stats && (
                 <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
                   <div className="bg-blue-50 rounded-lg p-4">
-                    <p className="text-sm text-blue-600 font-medium">Total Books</p>
+                    <p className="text-sm text-blue-600 font-medium">Total Copies</p>
                     <p className="text-3xl font-bold text-blue-900 mt-2">{data.stats.total_books}</p>
                   </div>
                   <div className="bg-green-50 rounded-lg p-4">
@@ -122,7 +141,7 @@ export default function AdminAnalyticsPage() {
                   </div>
                   <div className="bg-red-50 rounded-lg p-4">
                     <p className="text-sm text-red-600 font-medium">Total Fines</p>
-                    <p className="text-3xl font-bold text-red-900 mt-2">${data.stats.total_fines.toFixed(2)}</p>
+                    <p className="text-3xl font-bold text-red-900 mt-2">৳{data.stats.total_fines.toFixed(2)}</p>
                   </div>
                 </div>
               )}
@@ -148,8 +167,8 @@ export default function AdminAnalyticsPage() {
                         <tr key={idx} className="hover:bg-gray-50">
                           {Object.entries(row).map(([key, value]) => (
                             <td key={key} className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                              {typeof value === 'number' && !Number.isInteger(value) 
-                                ? value.toFixed(2) 
+                              {typeof value === 'number' && !Number.isInteger(value)
+                                ? value.toFixed(2)
                                 : value?.toString() || 'N/A'}
                             </td>
                           ))}
@@ -167,8 +186,8 @@ export default function AdminAnalyticsPage() {
                     <div key={key} className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
                       <span className="font-medium text-gray-700">{key}</span>
                       <span className="text-lg font-bold text-gray-900">
-                        {typeof value === 'number' && !Number.isInteger(value) 
-                          ? value.toFixed(2) 
+                        {typeof value === 'number' && !Number.isInteger(value)
+                          ? value.toFixed(2)
                           : value}
                       </span>
                     </div>
@@ -177,12 +196,12 @@ export default function AdminAnalyticsPage() {
               )}
 
               {/* Empty State */}
-              {((Array.isArray(data.data) && data.data.length === 0) || 
+              {((Array.isArray(data.data) && data.data.length === 0) ||
                 (typeof data.data === 'object' && !Array.isArray(data.data) && Object.keys(data.data).length === 0)) && (
-                <div className="text-center py-12">
-                  <p className="text-gray-500">No data available for this report</p>
-                </div>
-              )}
+                  <div className="text-center py-12">
+                    <p className="text-gray-500">No data available for this report</p>
+                  </div>
+                )}
             </div>
           </div>
         )}

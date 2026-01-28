@@ -6,19 +6,27 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const query = searchParams.get('q') || ''
 
-    if (!query || query.trim().length < 2) {
+    const checkQuery = query && query.trim().length >= 2
+    const hasFilters = searchParams.has('category') || searchParams.has('available')
+
+    if (!checkQuery && !hasFilters) {
       return NextResponse.json(
         { error: 'Search query must be at least 2 characters' },
         { status: 400 }
       )
     }
 
+    const category = searchParams.get('category')
+    const available = searchParams.get('available')
+
     const supabase = await createClient()
 
     // Use PL/pgSQL function for search
     const { data: results, error: searchError } = await supabase
       .rpc('search_books', {
-        p_search_query: query
+        p_search_query: query || null,
+        p_category_id: category ? parseInt(category) : null,
+        p_is_available: available === 'true' ? true : available === 'false' ? false : null
       })
 
     if (searchError) {
@@ -29,7 +37,7 @@ export async function GET(request: Request) {
       }, { status: 500 })
     }
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       query,
       count: results?.length || 0,
       results: results || []

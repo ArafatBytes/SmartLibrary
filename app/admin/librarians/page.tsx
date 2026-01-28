@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
+import { toast } from 'react-hot-toast'
 
 interface Librarian {
   user_id: number
@@ -15,9 +16,11 @@ export default function LibrariansManagement() {
   const router = useRouter()
   const [librarians, setLibrarians] = useState<Librarian[]>([])
   const [loading, setLoading] = useState(true)
-  const [showAddForm, setShowAddForm] = useState(false)
+  const [showAddForm, setShowAddForm] = useState(false) // This will now serve as the Edit/Add Modal
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [deleteId, setDeleteId] = useState<number | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
-  
+
   // Form states
   const [formData, setFormData] = useState({
     username: '',
@@ -44,45 +47,64 @@ export default function LibrariansManagement() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     try {
-      const url = editingId 
-        ? `/api/admin/librarians/${editingId}` 
+      const url = editingId
+        ? `/api/admin/librarians/${editingId}`
         : '/api/admin/librarians'
-      
+
       const method = editingId ? 'PUT' : 'POST'
-      
+
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
       })
 
+      const data = await response.json()
+
       if (response.ok) {
+        toast.success(editingId ? 'Librarian updated successfully' : 'Librarian created successfully')
         await fetchLibrarians()
         setShowAddForm(false)
         setEditingId(null)
         setFormData({ username: '', email: '', phone: '', password: '' })
+      } else {
+        toast.error(data.error || 'Operation failed')
       }
     } catch (error) {
       console.error('Error saving librarian:', error)
+      toast.error('An error occurred')
     }
   }
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this librarian?')) return
+  const confirmDelete = async () => {
+    if (!deleteId) return
 
     try {
-      const response = await fetch(`/api/admin/librarians/${id}`, {
+      const response = await fetch(`/api/admin/librarians/${deleteId}`, {
         method: 'DELETE'
       })
 
+      const data = await response.json()
+
       if (response.ok) {
+        toast.success('Librarian deleted successfully')
         await fetchLibrarians()
+        setShowDeleteModal(false)
+        setDeleteId(null)
+      } else {
+        toast.error(data.error || 'Failed to delete')
       }
     } catch (error) {
       console.error('Error deleting librarian:', error)
+      toast.error('An error occurred')
     }
+  }
+
+  const handleDeleteClick = (id: number) => {
+    setDeleteId(id)
+    setShowDeleteModal(true)
   }
 
   const handleEdit = (librarian: Librarian) => {
@@ -98,15 +120,22 @@ export default function LibrariansManagement() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-gray-900">Manage Librarians</h1>
-          <button
-            onClick={() => router.push('/admin')}
-            className="px-4 py-2 text-sm bg-gray-600 text-white rounded hover:bg-gray-700"
-          >
-            Back to Dashboard
-          </button>
+      <header className="bg-white border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex justify-between items-center">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => router.push('/admin')}
+              className="p-2 -ml-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-colors"
+              title="Back to Dashboard"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+              </svg>
+            </button>
+            <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+              Manage Librarians
+            </h1>
+          </div>
         </div>
       </header>
 
@@ -126,60 +155,113 @@ export default function LibrariansManagement() {
             </button>
           </div>
 
-          {/* Add/Edit Form */}
+          {/* Add/Edit Modal */}
           {showAddForm && (
-            <form onSubmit={handleSubmit} className="mb-6 p-4 bg-gray-50 rounded-lg space-y-4">
-              <h3 className="font-semibold">{editingId ? 'Edit Librarian' : 'Add New Librarian'}</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.username}
-                    onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  />
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full p-6 animate-in fade-in zoom-in duration-200">
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-xl font-bold text-gray-900">
+                    {editingId ? 'Edit Librarian' : 'Add New Librarian'}
+                  </h3>
+                  <button
+                    onClick={() => setShowAddForm(false)}
+                    className="text-gray-400 hover:text-gray-500"
+                  >
+                    <span className="sr-only">Close</span>
+                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                  <input
-                    type="email"
-                    required
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-                  <input
-                    type="text"
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Password {editingId && '(leave blank to keep current)'}
-                  </label>
-                  <input
-                    type="password"
-                    required={!editingId}
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  />
+
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
+                      <input
+                        type="text"
+                        required
+                        value={formData.username}
+                        onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                      <input
+                        type="email"
+                        required
+                        value={formData.email}
+                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                      <input
+                        type="text"
+                        value={formData.phone}
+                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Password {editingId && <span className="text-gray-500 font-normal">(leave blank to keep current)</span>}
+                      </label>
+                      <input
+                        type="password"
+                        required={!editingId}
+                        value={formData.password}
+                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-3 mt-6">
+                    <button
+                      type="button"
+                      onClick={() => setShowAddForm(false)}
+                      className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium"
+                    >
+                      {editingId ? 'Update Librarian' : 'Create Librarian'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* Delete Confirmation Modal */}
+          {showDeleteModal && (
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 animate-in fade-in zoom-in duration-200">
+                <h3 className="text-xl font-bold text-gray-900 mb-4">Confirm Delete</h3>
+                <p className="text-gray-600 mb-6">
+                  Are you sure you want to delete this librarian? This action cannot be undone.
+                </p>
+                <div className="flex justify-end gap-3">
+                  <button
+                    onClick={() => setShowDeleteModal(false)}
+                    className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={confirmDelete}
+                    className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 font-medium"
+                  >
+                    Delete Librarian
+                  </button>
                 </div>
               </div>
-              <button
-                type="submit"
-                className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
-              >
-                {editingId ? 'Update Librarian' : 'Create Librarian'}
-              </button>
-            </form>
+            </div>
           )}
 
           {/* Librarians Table */}
@@ -215,7 +297,7 @@ export default function LibrariansManagement() {
                         Edit
                       </button>
                       <button
-                        onClick={() => handleDelete(librarian.user_id)}
+                        onClick={() => handleDeleteClick(librarian.user_id)}
                         className="text-red-600 hover:text-red-800"
                       >
                         Delete
