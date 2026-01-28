@@ -372,7 +372,18 @@ AS $$
 DECLARE
     v_borrow_id INTEGER;
     v_copy_status VARCHAR(20);
+    v_member_exists BOOLEAN;
 BEGIN
+    -- Check if member exists
+    SELECT EXISTS(SELECT 1 FROM members WHERE member_id = p_member_id) INTO v_member_exists;
+    
+    IF NOT v_member_exists THEN
+        success := FALSE;
+        message := 'Member ID ' || p_member_id || ' does not exist';
+        RETURN NEXT;
+        RETURN;
+    END IF;
+
     -- Check if copy exists and is available
     SELECT status INTO v_copy_status
     FROM book_copies
@@ -380,14 +391,14 @@ BEGIN
 
     IF v_copy_status IS NULL THEN
         success := FALSE;
-        message := 'Book copy not found';
+        message := 'Book copy ID ' || p_copy_id || ' does not exist';
         RETURN NEXT;
         RETURN;
     END IF;
 
     IF v_copy_status != 'Available' THEN
         success := FALSE;
-        message := 'Book copy is not available';
+        message := 'Book copy ID ' || p_copy_id || ' is not available (Status: ' || v_copy_status || ')';
         RETURN NEXT;
         RETURN;
     END IF;

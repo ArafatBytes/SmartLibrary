@@ -65,7 +65,7 @@ export default function LibrarianDashboard() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [searchLoading, setSearchLoading] = useState(false)
-  const [activeSection, setActiveSection] = useState<'borrow' | 'return' | 'check' | 'manage'>('check')
+  const [activeSection, setActiveSection] = useState<'borrow' | 'return' | 'check' | 'manage' | 'addMember'>('check')
 
   // Borrow form
   const [borrowCopyId, setBorrowCopyId] = useState('')
@@ -106,6 +106,15 @@ export default function LibrarianDashboard() {
   const [addCopiesQuantity, setAddCopiesQuantity] = useState('')
   const [addCopiesLoading, setAddCopiesLoading] = useState(false)
   const [addCopiesMessage, setAddCopiesMessage] = useState('')
+
+  // Add member form
+  const [memberIdInput, setMemberIdInput] = useState('')
+  const [memberName, setMemberName] = useState('')
+  const [memberEmail, setMemberEmail] = useState('')
+  const [memberPhone, setMemberPhone] = useState('')
+  const [memberAddress, setMemberAddress] = useState('')
+  const [addMemberLoading, setAddMemberLoading] = useState(false)
+  const [addMemberMessage, setAddMemberMessage] = useState('')
 
   useEffect(() => {
     // Get user session from cookie
@@ -396,6 +405,73 @@ export default function LibrarianDashboard() {
     }
   }
 
+  const handleAddMember = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setAddMemberMessage('')
+    setAddMemberLoading(true)
+
+    // Validate Student ID is required
+    if (!memberIdInput.trim()) {
+      setAddMemberMessage('✗ Student ID is required')
+      setAddMemberLoading(false)
+      return
+    }
+
+    const memberId = parseInt(memberIdInput.trim())
+    if (isNaN(memberId) || memberId < 1) {
+      setAddMemberMessage('✗ Student ID must be a positive number')
+      setAddMemberLoading(false)
+      return
+    }
+
+    // Validate all other required fields
+    if (!memberName.trim() || !memberEmail.trim() || !memberPhone.trim() || !memberAddress.trim()) {
+      setAddMemberMessage('✗ All fields are required')
+      setAddMemberLoading(false)
+      return
+    }
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(memberEmail.trim())) {
+      setAddMemberMessage('✗ Please enter a valid email address')
+      setAddMemberLoading(false)
+      return
+    }
+
+    try {
+      const response = await fetch('/api/librarian/add-member', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: memberName.trim(),
+          email: memberEmail.trim(),
+          phone: memberPhone.trim(),
+          address: memberAddress.trim(),
+          member_id: parseInt(memberIdInput.trim())
+        })
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setAddMemberMessage(`✓ ${data.message} (Member ID: ${data.member_id})`)
+        setMemberIdInput('')
+        setMemberName('')
+        setMemberEmail('')
+        setMemberPhone('')
+        setMemberAddress('')
+      } else {
+        setAddMemberMessage(`✗ ${data.error}`)
+      }
+    } catch (error) {
+      console.error('Add member error:', error)
+      setAddMemberMessage('✗ Failed to add member')
+    } finally {
+      setAddMemberLoading(false)
+    }
+  }
+
   const handleConfirmPayment = async () => {
     if (!user || !fineDetails) return
 
@@ -631,6 +707,16 @@ export default function LibrarianDashboard() {
               } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
             >
               Add/Remove Books
+            </button>
+            <button
+              onClick={() => setActiveSection('addMember')}
+              className={`${
+                activeSection === 'addMember'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+            >
+              Add Member
             </button>
           </nav>
         </div>
@@ -1150,6 +1236,107 @@ export default function LibrarianDashboard() {
                 )}
               </form>
             </div>
+          </div>
+        )}
+
+        {/* Add Member Section */}
+        {activeSection === 'addMember' && (
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-xl font-semibold mb-4 text-green-700">👤 Add New Member</h2>
+            <form onSubmit={handleAddMember} className="space-y-4 max-w-2xl">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Student ID <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  required
+                  min="1"
+                  value={memberIdInput}
+                  onChange={(e) => setMemberIdInput(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                  placeholder="Enter student ID"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Full Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={memberName}
+                    onChange={(e) => setMemberName(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                    placeholder="Enter member's full name"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Email Address <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={memberEmail}
+                    onChange={(e) => setMemberEmail(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                    placeholder="member@example.com"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Phone Number <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="tel"
+                  required
+                  value={memberPhone}
+                  onChange={(e) => setMemberPhone(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                  placeholder="Enter phone number"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Address <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  required
+                  value={memberAddress}
+                  onChange={(e) => setMemberAddress(e.target.value)}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                  placeholder="Enter complete address"
+                />
+              </div>
+
+              <div className="bg-blue-50 border border-blue-300 rounded-lg p-3">
+                <p className="text-sm text-blue-900">
+                  <strong>Note:</strong> All fields are required. Student ID and email must be unique. Use the student's ID number as the Member ID.
+                </p>
+              </div>
+
+              <button
+                type="submit"
+                disabled={addMemberLoading}
+                className="w-full bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 disabled:bg-gray-400 font-medium"
+              >
+                {addMemberLoading ? 'Adding Member...' : '👤 Add Member'}
+              </button>
+
+              {addMemberMessage && (
+                <div className={`p-3 rounded-md ${addMemberMessage.startsWith('✓') ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                  {addMemberMessage}
+                </div>
+              )}
+            </form>
           </div>
         )}
       </div>

@@ -9,6 +9,8 @@ DROP FUNCTION IF EXISTS add_new_book(VARCHAR, VARCHAR, VARCHAR, VARCHAR[], INTEG
 DROP FUNCTION IF EXISTS remove_book_copy(INTEGER) CASCADE;
 DROP FUNCTION IF EXISTS get_all_categories() CASCADE;
 DROP FUNCTION IF EXISTS add_book_copies(VARCHAR, INTEGER) CASCADE;
+DROP FUNCTION IF EXISTS add_member(VARCHAR, VARCHAR, VARCHAR, TEXT) CASCADE;
+DROP FUNCTION IF EXISTS add_member(VARCHAR, VARCHAR, VARCHAR, TEXT, INTEGER) CASCADE;
 
 -- =====================================================
 -- FUNCTION: Get All Categories
@@ -298,12 +300,120 @@ END;
 $$;
 
 -- =====================================================
+-- FUNCTION: Add New Member
+-- =====================================================
+CREATE OR REPLACE FUNCTION add_member(
+    p_name VARCHAR,
+    p_email VARCHAR,
+    p_phone VARCHAR,
+    p_address TEXT,
+    p_member_id INTEGER
+)
+RETURNS TABLE (
+    success BOOLEAN,
+    message TEXT,
+    member_id INTEGER
+)
+SECURITY DEFINER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_member_id INTEGER;
+    v_email_exists BOOLEAN;
+    v_id_exists BOOLEAN;
+BEGIN
+    -- Validate inputs
+    IF p_member_id IS NULL THEN
+        success := FALSE;
+        message := 'Member ID (Student ID) is required';
+        member_id := NULL;
+        RETURN NEXT;
+        RETURN;
+    END IF;
+
+    IF p_member_id < 1 THEN
+        success := FALSE;
+        message := 'Member ID must be a positive number';
+        member_id := NULL;
+        RETURN NEXT;
+        RETURN;
+    END IF;
+
+    IF p_name IS NULL OR p_name = '' THEN
+        success := FALSE;
+        message := 'Name is required';
+        member_id := NULL;
+        RETURN NEXT;
+        RETURN;
+    END IF;
+
+    IF p_email IS NULL OR p_email = '' THEN
+        success := FALSE;
+        message := 'Email is required';
+        member_id := NULL;
+        RETURN NEXT;
+        RETURN;
+    END IF;
+
+    IF p_phone IS NULL OR p_phone = '' THEN
+        success := FALSE;
+        message := 'Phone number is required';
+        member_id := NULL;
+        RETURN NEXT;
+        RETURN;
+    END IF;
+
+    IF p_address IS NULL OR p_address = '' THEN
+        success := FALSE;
+        message := 'Address is required';
+        member_id := NULL;
+        RETURN NEXT;
+        RETURN;
+    END IF;
+
+    -- Check if member_id already exists
+    SELECT EXISTS(SELECT 1 FROM members m WHERE m.member_id = p_member_id) INTO v_id_exists;
+    
+    IF v_id_exists THEN
+        success := FALSE;
+        message := 'Student ID ' || p_member_id || ' already exists. Please use a different ID.';
+        member_id := NULL;
+        RETURN NEXT;
+        RETURN;
+    END IF;
+
+    -- Check if email already exists
+    SELECT EXISTS(SELECT 1 FROM members WHERE email = p_email) INTO v_email_exists;
+
+    IF v_email_exists THEN
+        success := FALSE;
+        message := 'Email already exists. Please use a different email address.';
+        member_id := NULL;
+        RETURN NEXT;
+        RETURN;
+    END IF;
+
+    -- Insert with specified member_id
+    INSERT INTO members (member_id, name, email, phone, address)
+    VALUES (p_member_id, p_name, p_email, p_phone, p_address)
+    RETURNING members.member_id INTO v_member_id;
+
+    success := TRUE;
+    message := 'Member added successfully';
+    member_id := v_member_id;
+
+    RETURN NEXT;
+END;
+$$;
+
+-- =====================================================
 -- GRANT PERMISSIONS
 -- =====================================================
 GRANT EXECUTE ON FUNCTION get_all_categories() TO authenticated;
 GRANT EXECUTE ON FUNCTION add_new_book(VARCHAR, VARCHAR, VARCHAR, VARCHAR[], INTEGER, INTEGER, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION remove_book_copy(INTEGER) TO authenticated;
 GRANT EXECUTE ON FUNCTION add_book_copies(VARCHAR, INTEGER) TO authenticated;
+GRANT EXECUTE ON FUNCTION add_member(VARCHAR, VARCHAR, VARCHAR, TEXT, INTEGER) TO authenticated;
 
 -- =====================================================
 -- COMMENTS
@@ -312,6 +422,7 @@ COMMENT ON FUNCTION get_all_categories() IS 'Returns all book categories for dro
 COMMENT ON FUNCTION add_new_book(VARCHAR, VARCHAR, VARCHAR, VARCHAR[], INTEGER, INTEGER, TEXT) IS 'Adds a new book to catalog. Creates authors if they do not exist. Always creates a new book copy.';
 COMMENT ON FUNCTION remove_book_copy(INTEGER) IS 'Marks a book copy as Lost (unavailable). Prevents removal if currently borrowed.';
 COMMENT ON FUNCTION add_book_copies(VARCHAR, INTEGER) IS 'Adds multiple copies of an existing book. Validates ISBN exists in catalog.';
+COMMENT ON FUNCTION add_member(VARCHAR, VARCHAR, VARCHAR, TEXT, INTEGER) IS 'Adds a new member to the library. Requires student ID. Validates ID and email uniqueness.';
 
 -- =====================================================
 -- CONFIRMATION
@@ -325,4 +436,5 @@ BEGIN
     RAISE NOTICE '  • add_new_book() - Add book with auto-author creation';
     RAISE NOTICE '  • add_book_copies() - Add multiple copies of existing book';
     RAISE NOTICE '  • remove_book_copy() - Mark copy as unavailable';
+    RAISE NOTICE '  • add_member() - Add new library member';
 END $$;
