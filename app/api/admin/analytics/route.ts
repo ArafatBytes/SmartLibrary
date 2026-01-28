@@ -70,24 +70,22 @@ async function getOverviewStats(supabase: SupabaseClient) {
     overdueBooks,
     totalFines
   ] = await Promise.all([
-    supabase.from('books').select('isbn', { count: 'exact', head: true }),
-    supabase.from('members').select('member_id', { count: 'exact', head: true }),
+    supabase.rpc('count_total_books'),
+    supabase.rpc('count_total_members'),
     supabase.rpc('count_active_borrows'),
     supabase.rpc('count_overdue_books'),
-    supabase.from('fines').select('amount').then((res) => 
-      (res.data as Fine[] | null)?.reduce((sum: number, f: Fine) => sum + parseFloat(f.amount), 0) || 0
-    )
+    supabase.rpc('get_total_fines_amount')
   ])
 
   return NextResponse.json({
     report_type: 'overview',
     generated_at: new Date().toISOString(),
     stats: {
-      total_books: totalBooks.count || 0,
-      total_members: totalMembers.count || 0,
+      total_books: totalBooks.data || 0,
+      total_members: totalMembers.data || 0,
       active_borrows: activeBorrows.data || 0,
       overdue_books: overdueBooks.data || 0,
-      total_fines: totalFines
+      total_fines: totalFines.data || 0
     }
   })
 }

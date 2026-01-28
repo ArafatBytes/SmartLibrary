@@ -6,10 +6,10 @@ export async function GET() {
     const supabase = await createClient()
 
     const { data: logs, error } = await supabase
-      .from('audit_log')
-      .select('*')
-      .order('timestamp', { ascending: false })
-      .limit(100) // Limit to last 100 entries
+      .rpc('get_audit_log', {
+        p_limit: 100,
+        p_offset: 0
+      })
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })

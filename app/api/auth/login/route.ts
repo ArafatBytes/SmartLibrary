@@ -15,14 +15,12 @@ export async function POST(request: Request) {
 
     const supabase = await createClient()
 
-    // Query user from database
-    const { data: user, error } = await supabase
-      .from('users')
-      .select('user_id, username, email, password_hash, role')
-      .eq('username', username)
-      .single()
+    // Query user from database using PL/pgSQL function
+    const { data, error } = await supabase
+      .rpc('authenticate_user', { p_username: username })
+      .single() as { data: { user_id: number; username: string; email: string; password_hash: string; role: string; success: boolean; message: string } | null; error: Error | null }
 
-    if (error || !user) {
+    if (error || !data || !data.success) {
       return NextResponse.json(
         { error: 'Invalid username or password' },
         { status: 401 }
@@ -30,7 +28,7 @@ export async function POST(request: Request) {
     }
 
     // Verify password using bcrypt
-    const isPasswordValid = await bcrypt.compare(password, user.password_hash)
+    const isPasswordValid = await bcrypt.compare(password, data.password_hash)
     
     if (!isPasswordValid) {
       return NextResponse.json(
@@ -42,20 +40,20 @@ export async function POST(request: Request) {
     // Create session (simplified version)
     const response = NextResponse.json({
       success: true,
-      role: user.role,
+      role: data.role,
       user: {
-        id: user.user_id,
-        username: user.username,
-        email: user.email,
-        role: user.role
+        id: data.user_id,
+        username: data.username,
+        email: data.email,
+        role: data.role
       }
     })
 
     // Set cookie for session
     response.cookies.set('user_session', JSON.stringify({
-      id: user.user_id,
-      role: user.role,
-      username: user.username
+      id: data.user_id,
+      role: data.role,
+      username: data.username
     }), {
       httpOnly: false, // Allow client-side JavaScript to read for role checks
       secure: process.env.NODE_ENV === 'production',

@@ -12,35 +12,39 @@ export async function PUT(
     const { username, email, phone, password } = await request.json()
     const supabase = await createClient()
 
-    const updateData: {
-      username: string
-      email: string
-      phone: string | null
-      password_hash?: string
-    } = {
-      username,
-      email,
-      phone: phone || null
-    }
-
-    // Only update password if provided
+    // Hash password if provided
+    let hashedPassword = null
     if (password) {
-      updateData.password_hash = await bcrypt.hash(password, 10)
+      hashedPassword = await bcrypt.hash(password, 10)
     }
 
     const { data, error } = await supabase
-      .from('users')
-      .update(updateData)
-      .eq('user_id', id)
-      .eq('role', 'Librarian') // Only update librarians
-      .select()
-      .single()
+      .rpc('update_librarian', {
+        p_user_id: parseInt(id),
+        p_username: username,
+        p_email: email,
+        p_phone: phone || null,
+        p_password_hash: hashedPassword
+      })
+      .single() as { data: { success: boolean; message: string; user_id: number; username: string; email: string; phone: string } | null; error: Error | null }
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json({ success: true, user: data })
+    if (!data || !data.success) {
+      return NextResponse.json({ error: data?.message || 'Failed to update librarian' }, { status: 400 })
+    }
+
+    return NextResponse.json({ 
+      success: true, 
+      user: {
+        user_id: data.user_id,
+        username: data.username,
+        email: data.email,
+        phone: data.phone
+      }
+    })
   } catch {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
@@ -55,17 +59,21 @@ export async function DELETE(
     const { id } = await params
     const supabase = await createClient()
 
-    const { error } = await supabase
-      .from('users')
-      .delete()
-      .eq('user_id', id)
-      .eq('role', 'Librarian') // Only delete librarians
+    const { data, error } = await supabase
+      .rpc('delete_librarian', {
+        p_user_id: parseInt(id)
+      })
+      .single() as { data: { success: boolean; message: string } | null; error: Error | null }
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json({ success: true })
+    if (!data || !data.success) {
+      return NextResponse.json({ error: data?.message || 'Failed to delete librarian' }, { status: 400 })
+    }
+
+    return NextResponse.json({ success: true, message: data.message })
   } catch {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }

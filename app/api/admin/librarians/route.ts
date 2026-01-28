@@ -8,10 +8,7 @@ export async function GET() {
     const supabase = await createClient()
 
     const { data: librarians, error } = await supabase
-      .from('users')
-      .select('user_id, username, email, phone, created_at')
-      .eq('role', 'Librarian')
-      .order('created_at', { ascending: false })
+      .rpc('get_all_librarians')
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
@@ -41,22 +38,32 @@ export async function POST(request: Request) {
     const hashedPassword = await bcrypt.hash(password, 10)
 
     const { data, error } = await supabase
-      .from('users')
-      .insert({
-        username,
-        email,
-        phone: phone || null,
-        password_hash: hashedPassword,
-        role: 'Librarian'
+      .rpc('create_librarian', {
+        p_username: username,
+        p_email: email,
+        p_phone: phone || null,
+        p_password_hash: hashedPassword
       })
-      .select()
-      .single()
+      .single() as { data: { success: boolean; message: string; user_id: number; username: string; email: string; phone: string; created_at: string } | null; error: Error | null }
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json({ success: true, user: data })
+    if (!data || !data.success) {
+      return NextResponse.json({ error: data?.message || 'Failed to create librarian' }, { status: 400 })
+    }
+
+    return NextResponse.json({ 
+      success: true, 
+      user: {
+        user_id: data.user_id,
+        username: data.username,
+        email: data.email,
+        phone: data.phone,
+        created_at: data.created_at
+      }
+    })
   } catch {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
