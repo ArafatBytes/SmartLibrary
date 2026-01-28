@@ -102,6 +102,11 @@ export default function LibrarianDashboard() {
   const [removeBookLoading, setRemoveBookLoading] = useState(false)
   const [removeBookMessage, setRemoveBookMessage] = useState('')
 
+  const [addCopiesIsbn, setAddCopiesIsbn] = useState('')
+  const [addCopiesQuantity, setAddCopiesQuantity] = useState('')
+  const [addCopiesLoading, setAddCopiesLoading] = useState(false)
+  const [addCopiesMessage, setAddCopiesMessage] = useState('')
+
   useEffect(() => {
     // Get user session from cookie
     const cookies = document.cookie.split(';')
@@ -344,6 +349,50 @@ export default function LibrarianDashboard() {
       setRemoveBookMessage('✗ Failed to remove book copy')
     } finally {
       setRemoveBookLoading(false)
+    }
+  }
+
+  const handleAddCopies = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setAddCopiesMessage('')
+    setAddCopiesLoading(true)
+
+    if (!addCopiesIsbn.trim()) {
+      setAddCopiesMessage('ISBN is required')
+      setAddCopiesLoading(false)
+      return
+    }
+
+    if (!addCopiesQuantity.trim() || parseInt(addCopiesQuantity) < 1) {
+      setAddCopiesMessage('Quantity must be at least 1')
+      setAddCopiesLoading(false)
+      return
+    }
+
+    try {
+      const response = await fetch('/api/librarian/add-copies', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          isbn: addCopiesIsbn.trim(),
+          quantity: parseInt(addCopiesQuantity)
+        })
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setAddCopiesMessage(`✓ ${data.message} (Copy IDs: ${data.copy_ids.join(', ')})`)
+        setAddCopiesIsbn('')
+        setAddCopiesQuantity('')
+      } else {
+        setAddCopiesMessage(`✗ ${data.error}`)
+      }
+    } catch (error) {
+      console.error('Add copies error:', error)
+      setAddCopiesMessage('✗ Failed to add book copies')
+    } finally {
+      setAddCopiesLoading(false)
     }
   }
 
@@ -660,9 +709,13 @@ export default function LibrarianDashboard() {
                   <div className="pt-3 border-t">
                     <span className="text-sm font-medium text-gray-500">Status:</span>
                     <div className="mt-1">
-                      {checkResult.is_available ? (
+                      {checkResult.status === 'Available' ? (
                         <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-green-100 text-green-800">
                           ✓ Available
+                        </span>
+                      ) : checkResult.status === 'Lost' ? (
+                        <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-gray-100 text-gray-800">
+                          ⊗ Lost
                         </span>
                       ) : (
                         <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-red-100 text-red-800">
@@ -997,6 +1050,62 @@ export default function LibrarianDashboard() {
                 {addBookMessage && (
                   <div className={`p-3 rounded-md ${addBookMessage.startsWith('✓') ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
                     {addBookMessage}
+                  </div>
+                )}
+              </form>
+            </div>
+
+            {/* Add Copies of Existing Book */}
+            <div className="bg-white rounded-lg shadow p-6">
+              <h2 className="text-xl font-semibold mb-4 text-blue-700">📚 Add Copies of Existing Book</h2>
+              <form onSubmit={handleAddCopies} className="space-y-4 max-w-md">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Book ISBN <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={addCopiesIsbn}
+                    onChange={(e) => setAddCopiesIsbn(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Enter ISBN (e.g., 978-0-123456-78-9)"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Number of Copies <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    max="100"
+                    value={addCopiesQuantity}
+                    onChange={(e) => setAddCopiesQuantity(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Enter quantity (1-100)"
+                  />
+                </div>
+
+                <div className="bg-blue-50 border border-blue-300 rounded-lg p-3">
+                  <p className="text-sm text-blue-900">
+                    <strong>Note:</strong> The book must already exist in the catalog. This will add new copies of an existing book only.
+                  </p>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={addCopiesLoading}
+                  className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:bg-gray-400 font-medium"
+                >
+                  {addCopiesLoading ? 'Adding...' : '📚 Add Copies'}
+                </button>
+
+                {addCopiesMessage && (
+                  <div className={`p-3 rounded-md ${addCopiesMessage.startsWith('✓') ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                    {addCopiesMessage}
                   </div>
                 )}
               </form>

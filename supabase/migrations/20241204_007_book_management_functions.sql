@@ -8,6 +8,7 @@
 DROP FUNCTION IF EXISTS add_new_book(VARCHAR, VARCHAR, VARCHAR, VARCHAR[], INTEGER, INTEGER, TEXT) CASCADE;
 DROP FUNCTION IF EXISTS remove_book_copy(INTEGER) CASCADE;
 DROP FUNCTION IF EXISTS get_all_categories() CASCADE;
+DROP FUNCTION IF EXISTS add_book_copies(VARCHAR, INTEGER) CASCADE;
 
 -- =====================================================
 -- FUNCTION: Get All Categories
@@ -206,11 +207,103 @@ END;
 $$;
 
 -- =====================================================
+-- FUNCTION: Add Multiple Copies of Existing Book
+-- =====================================================
+CREATE OR REPLACE FUNCTION add_book_copies(
+    p_isbn VARCHAR,
+    p_quantity INTEGER
+)
+RETURNS TABLE (
+    success BOOLEAN,
+    message TEXT,
+    isbn VARCHAR,
+    copies_added INTEGER,
+    copy_ids INTEGER[]
+)
+SECURITY DEFINER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_book_exists BOOLEAN;
+    v_book_title VARCHAR;
+    v_copy_id INTEGER;
+    v_copy_ids INTEGER[] := ARRAY[]::INTEGER[];
+    v_counter INTEGER := 0;
+BEGIN
+    -- Validate inputs
+    IF p_isbn IS NULL OR p_isbn = '' THEN
+        success := FALSE;
+        message := 'ISBN is required';
+        isbn := p_isbn;
+        copies_added := 0;
+        copy_ids := ARRAY[]::INTEGER[];
+        RETURN NEXT;
+        RETURN;
+    END IF;
+
+    IF p_quantity IS NULL OR p_quantity < 1 THEN
+        success := FALSE;
+        message := 'Quantity must be at least 1';
+        isbn := p_isbn;
+        copies_added := 0;
+        copy_ids := ARRAY[]::INTEGER[];
+        RETURN NEXT;
+        RETURN;
+    END IF;
+
+    IF p_quantity > 100 THEN
+        success := FALSE;
+        message := 'Cannot add more than 100 copies at once';
+        isbn := p_isbn;
+        copies_added := 0;
+        copy_ids := ARRAY[]::INTEGER[];
+        RETURN NEXT;
+        RETURN;
+    END IF;
+
+    -- Check if book exists
+    SELECT EXISTS(SELECT 1 FROM books WHERE books.isbn = p_isbn), 
+           (SELECT title FROM books WHERE books.isbn = p_isbn LIMIT 1)
+    INTO v_book_exists, v_book_title;
+
+    IF NOT v_book_exists THEN
+        success := FALSE;
+        message := 'Book with ISBN ' || p_isbn || ' does not exist in catalog';
+        isbn := p_isbn;
+        copies_added := 0;
+        copy_ids := ARRAY[]::INTEGER[];
+        RETURN NEXT;
+        RETURN;
+    END IF;
+
+    -- Add copies
+    FOR v_counter IN 1..p_quantity LOOP
+        INSERT INTO book_copies (isbn, status)
+        VALUES (p_isbn, 'Available')
+        RETURNING book_copies.copy_id INTO v_copy_id;
+        
+        v_copy_ids := array_append(v_copy_ids, v_copy_id);
+    END LOOP;
+
+    success := TRUE;
+    message := 'Successfully added ' || p_quantity || ' cop' || 
+               CASE WHEN p_quantity = 1 THEN 'y' ELSE 'ies' END || 
+               ' of "' || v_book_title || '"';
+    isbn := p_isbn;
+    copies_added := p_quantity;
+    copy_ids := v_copy_ids;
+
+    RETURN NEXT;
+END;
+$$;
+
+-- =====================================================
 -- GRANT PERMISSIONS
 -- =====================================================
 GRANT EXECUTE ON FUNCTION get_all_categories() TO authenticated;
 GRANT EXECUTE ON FUNCTION add_new_book(VARCHAR, VARCHAR, VARCHAR, VARCHAR[], INTEGER, INTEGER, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION remove_book_copy(INTEGER) TO authenticated;
+GRANT EXECUTE ON FUNCTION add_book_copies(VARCHAR, INTEGER) TO authenticated;
 
 -- =====================================================
 -- COMMENTS
@@ -218,6 +311,7 @@ GRANT EXECUTE ON FUNCTION remove_book_copy(INTEGER) TO authenticated;
 COMMENT ON FUNCTION get_all_categories() IS 'Returns all book categories for dropdown selection';
 COMMENT ON FUNCTION add_new_book(VARCHAR, VARCHAR, VARCHAR, VARCHAR[], INTEGER, INTEGER, TEXT) IS 'Adds a new book to catalog. Creates authors if they do not exist. Always creates a new book copy.';
 COMMENT ON FUNCTION remove_book_copy(INTEGER) IS 'Marks a book copy as Lost (unavailable). Prevents removal if currently borrowed.';
+COMMENT ON FUNCTION add_book_copies(VARCHAR, INTEGER) IS 'Adds multiple copies of an existing book. Validates ISBN exists in catalog.';
 
 -- =====================================================
 -- CONFIRMATION
@@ -229,5 +323,6 @@ BEGIN
     RAISE NOTICE '📋 Functions:';
     RAISE NOTICE '  • get_all_categories() - Get category list';
     RAISE NOTICE '  • add_new_book() - Add book with auto-author creation';
+    RAISE NOTICE '  • add_book_copies() - Add multiple copies of existing book';
     RAISE NOTICE '  • remove_book_copy() - Mark copy as unavailable';
 END $$;
