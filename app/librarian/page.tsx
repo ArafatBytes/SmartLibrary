@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useState, useEffect, startTransition, useCallback } from 'react'
+import React, { useState, useEffect, startTransition, useCallback } from 'react'
 import { toast } from 'react-hot-toast'
 
 interface UserSession {
@@ -28,6 +28,11 @@ interface SearchResult {
   total_copies: number
   is_available: boolean
   publication_year: number
+}
+
+interface CopyInfo {
+  copy_id: number
+  status: string
 }
 
 interface CheckStatusResult {
@@ -84,6 +89,11 @@ export default function LibrarianDashboard() {
   const [activeBorrows, setActiveBorrows] = useState<ActiveBorrow[]>([])
   const [fineDetails, setFineDetails] = useState<FineDetails | null>(null)
   const [showPaymentConfirm, setShowPaymentConfirm] = useState(false)
+
+  // Expanded book copies
+  const [expandedBooks, setExpandedBooks] = useState<Set<string>>(new Set())
+  const [bookCopies, setBookCopies] = useState<Record<string, CopyInfo[]>>({})
+  const [copiesLoading, setCopiesLoading] = useState<Set<string>>(new Set())
 
   // Check status form
   const [checkCopyId, setCheckCopyId] = useState('')
@@ -199,6 +209,38 @@ export default function LibrarianDashboard() {
       router.push('/login')
     }
   }
+
+  const toggleBookCopies = useCallback(async (isbn: string) => {
+    setExpandedBooks(prev => {
+      const next = new Set(prev)
+      if (next.has(isbn)) {
+        next.delete(isbn)
+      } else {
+        next.add(isbn)
+      }
+      return next
+    })
+
+    // Fetch copies if not already loaded
+    if (!bookCopies[isbn]) {
+      setCopiesLoading(prev => new Set(prev).add(isbn))
+      try {
+        const response = await fetch(`/api/librarian/copies?isbn=${encodeURIComponent(isbn)}`)
+        const data = await response.json()
+        if (response.ok) {
+          setBookCopies(prev => ({ ...prev, [isbn]: data.copies || [] }))
+        }
+      } catch (error) {
+        console.error('Failed to fetch copies:', error)
+      } finally {
+        setCopiesLoading(prev => {
+          const next = new Set(prev)
+          next.delete(isbn)
+          return next
+        })
+      }
+    }
+  }, [bookCopies])
 
   const fetchSearchResults = useCallback(async (query: string, currentFilters: { category: string; availability: string }, showErrors: boolean) => {
     // If no query and no filters, don't search (unless user explicitly cleared everything)
@@ -752,33 +794,88 @@ export default function LibrarianDashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {searchResults.map((book, index) => (
-                    <tr key={`${book.isbn}-${index}`} className="hover:bg-emerald-50/10 transition-colors">
-                      <td className="px-6 py-4">
-                        <div className="text-sm font-semibold text-gray-900">{book.title}</div>
-                        <div className="text-xs text-gray-500 mb-1">by {book.authors}</div>
-                        <div className="text-xs text-gray-400">{book.publisher} ({book.publication_year})</div>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-600">
-                        <span className="bg-gray-100 px-2 py-1 rounded-md text-xs">{book.category}</span>
-                      </td>
-                      <td className="px-6 py-4 text-sm font-mono text-gray-500">{book.isbn}</td>
-                      <td className="px-6 py-4">
-                        {book.is_available ? (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
-                            Available
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                            Out of Stock
-                          </span>
+                  {searchResults.map((book, index) => {
+                    const isExpanded = expandedBooks.has(book.isbn)
+                    const copies = bookCopies[book.isbn]
+                    const isLoadingCopies = copiesLoading.has(book.isbn)
+                    return (
+                      <React.Fragment key={`${book.isbn}-${index}`}>
+                        <tr
+                          className="hover:bg-emerald-50/10 transition-colors cursor-pointer"
+                          onClick={() => toggleBookCopies(book.isbn)}
+                        >
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-2">
+                              <svg
+                                className={`w-4 h-4 text-gray-400 transition-transform duration-200 flex-shrink-0 ${isExpanded ? 'rotate-90' : ''}`}
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                strokeWidth={2}
+                              >
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                              </svg>
+                              <div>
+                                <div className="text-sm font-semibold text-gray-900">{book.title}</div>
+                                <div className="text-xs text-gray-500 mb-1">by {book.authors}</div>
+                                <div className="text-xs text-gray-400">{book.publisher} ({book.publication_year})</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-600">
+                            <span className="bg-gray-100 px-2 py-1 rounded-md text-xs">{book.category}</span>
+                          </td>
+                          <td className="px-6 py-4 text-sm font-mono text-gray-500">{book.isbn}</td>
+                          <td className="px-6 py-4">
+                            {book.is_available ? (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
+                                Available
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                Out of Stock
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-600 font-medium">
+                            {book.available_copies} / {book.total_copies}
+                          </td>
+                        </tr>
+                        {isExpanded && (
+                          <tr key={`${book.isbn}-copies`} className="bg-gray-50/70">
+                            <td colSpan={5} className="px-6 py-3">
+                              <div className="ml-6">
+                                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Copy IDs</div>
+                                {isLoadingCopies ? (
+                                  <div className="text-xs text-gray-400 animate-pulse">Loading copies...</div>
+                                ) : copies && copies.length > 0 ? (
+                                  <div className="flex flex-wrap gap-2">
+                                    {copies.map((copy) => (
+                                      <span
+                                        key={copy.copy_id}
+                                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-mono font-medium border ${
+                                          copy.status === 'Available'
+                                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                            : copy.status === 'Borrowed'
+                                            ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                            : 'bg-red-50 text-red-700 border-red-200'
+                                        }`}
+                                      >
+                                        #{copy.copy_id}
+                                        <span className="text-[10px] opacity-75">({copy.status})</span>
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <div className="text-xs text-gray-400">No copies found</div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
                         )}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-600 font-medium">
-                        {book.available_copies} / {book.total_copies}
-                      </td>
-                    </tr>
-                  ))}
+                      </React.Fragment>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
