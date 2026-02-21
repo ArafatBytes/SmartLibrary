@@ -320,16 +320,6 @@ export default function LibrarianDashboard() {
 
     if (!user) return
 
-    // Validate due date
-    const selectedDate = new Date(borrowDueDate)
-    const today = new Date()
-    today.setHours(0, 0, 0, 0) // Reset time to start of day for accurate comparison
-
-    if (selectedDate < today) {
-      toast.error('Due date cannot be in the past')
-      return
-    }
-
     setBorrowLoading(true)
 
     try {
@@ -995,7 +985,6 @@ export default function LibrarianDashboard() {
                     required
                     value={borrowDueDate}
                     onChange={(e) => setBorrowDueDate(e.target.value)}
-                    min={new Date().toISOString().split('T')[0]}
                     className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
                   />
                 </div>
