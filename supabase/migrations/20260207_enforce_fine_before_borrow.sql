@@ -18,6 +18,8 @@ DECLARE
     v_member_exists BOOLEAN;
     v_unpaid_fine_count INTEGER;
     v_unpaid_fine_total DECIMAL(10,2);
+    v_active_borrows INTEGER;
+    v_max_borrows CONSTANT INTEGER := 5;
 BEGIN
     -- Check if member exists
     SELECT EXISTS(SELECT 1 FROM members WHERE member_id = p_member_id) INTO v_member_exists;
@@ -45,6 +47,21 @@ BEGIN
     IF v_unpaid_fine_count > 0 THEN
         success := FALSE;
         message := 'Member has ' || v_unpaid_fine_count || ' unpaid fine(s) totalling BDT ' || v_unpaid_fine_total || '. Please clear all fines before borrowing.';
+        RETURN NEXT;
+        RETURN;
+    END IF;
+
+    -- Check active borrow limit (max 5 books at a time)
+    SELECT COUNT(*) INTO v_active_borrows
+    FROM borrow_transactions bt
+    WHERE bt.member_id = p_member_id
+    AND NOT EXISTS (
+        SELECT 1 FROM return_transactions rt WHERE rt.borrow_id = bt.borrow_id
+    );
+
+    IF v_active_borrows >= v_max_borrows THEN
+        success := FALSE;
+        message := 'Member already has ' || v_active_borrows || ' book(s) borrowed. Maximum limit is ' || v_max_borrows || '. Please return a book before borrowing another.';
         RETURN NEXT;
         RETURN;
     END IF;
