@@ -73,7 +73,7 @@ export default function LibrarianDashboard() {
   const [searchLoading, setSearchLoading] = useState(false)
   const [pendingFilter, setPendingFilter] = useState({ category: '', availability: '' })
   const [filters, setFilters] = useState({ category: '', availability: '' })
-  const [activeSection, setActiveSection] = useState<'borrow' | 'return' | 'check' | 'manage' | 'addMember'>('check')
+  const [activeSection, setActiveSection] = useState<'borrow' | 'return' | 'check' | 'manage' | 'addMember' | 'memberInfo'>('check')
 
   // Borrow form
   const [borrowCopyId, setBorrowCopyId] = useState('')
@@ -117,6 +117,20 @@ export default function LibrarianDashboard() {
   const [addCopiesIsbn, setAddCopiesIsbn] = useState('')
   const [addCopiesQuantity, setAddCopiesQuantity] = useState('')
   const [addCopiesLoading, setAddCopiesLoading] = useState(false)
+
+  // Member info
+  const [memberInfoId, setMemberInfoId] = useState('')
+  const [memberInfoLoading, setMemberInfoLoading] = useState(false)
+  const [memberInfoData, setMemberInfoData] = useState<{
+    member: { name: string; email: string; phone: string } | null
+    borrowed_books: {
+      copy_id: number; isbn: string; title: string; authors: string;
+      borrow_date: string; due_date: string; days_overdue: number;
+      fine_id: number | null; fine_amount: number; is_paid: boolean;
+    }[]
+    total_borrowed: number
+    total_unpaid_fines: number
+  } | null>(null)
 
   // Add member form
   const [memberIdInput, setMemberIdInput] = useState('')
@@ -171,6 +185,9 @@ export default function LibrarianDashboard() {
 
     setRemoveCopyId('')
 
+
+    setMemberInfoId('')
+    setMemberInfoData(null)
 
     setMemberIdInput('')
     setMemberName('')
@@ -319,6 +336,16 @@ export default function LibrarianDashboard() {
     e.preventDefault()
 
     if (!user) return
+
+    // Validate due date
+    const selectedDate = new Date(borrowDueDate)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    if (selectedDate < today) {
+      toast.error('Due date cannot be in the past')
+      return
+    }
 
     setBorrowLoading(true)
 
@@ -522,6 +549,33 @@ export default function LibrarianDashboard() {
       toast.error('Failed to add book copies')
     } finally {
       setAddCopiesLoading(false)
+    }
+  }
+
+  const handleMemberInfo = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!memberInfoId) return
+
+    setMemberInfoLoading(true)
+    setMemberInfoData(null)
+
+    try {
+      const response = await fetch(`/api/librarian/member-info?member_id=${memberInfoId}`)
+      const data = await response.json()
+
+      if (response.ok) {
+        setMemberInfoData(data)
+        if (!data.member) {
+          toast.error('No data found for this member')
+        }
+      } else {
+        toast.error(data.error || 'Failed to fetch member info')
+      }
+    } catch (error) {
+      console.error('Member info error:', error)
+      toast.error('An error occurred')
+    } finally {
+      setMemberInfoLoading(false)
     }
   }
 
@@ -747,6 +801,7 @@ export default function LibrarianDashboard() {
                 { id: 'return', label: 'Return' },
                 { id: 'manage', label: 'Books' },
                 { id: 'addMember', label: 'New Member' },
+                { id: 'memberInfo', label: 'Member Info' },
               ].map((item) => (
                 <button
                   key={item.id}
@@ -985,6 +1040,7 @@ export default function LibrarianDashboard() {
                     required
                     value={borrowDueDate}
                     onChange={(e) => setBorrowDueDate(e.target.value)}
+                    min={new Date().toISOString().split('T')[0]}
                     className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
                   />
                 </div>
@@ -1298,6 +1354,137 @@ export default function LibrarianDashboard() {
                   {addMemberLoading ? 'Creating Profile...' : 'Create Member Profile'}
                 </button>
               </form>
+            </div>
+          )}
+
+          {/* Member Info Section */}
+          {activeSection === 'memberInfo' && (
+            <div className="bg-white rounded-2xl shadow-xl shadow-gray-200/50 p-8 border border-gray-100">
+              <h2 className="text-2xl font-bold mb-6 text-gray-900 text-center">Member Information</h2>
+
+              <form onSubmit={handleMemberInfo} className="space-y-6">
+                <div className="relative">
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 block">Member ID</label>
+                  <input
+                    type="number"
+                    required
+                    value={memberInfoId}
+                    onChange={(e) => setMemberInfoId(e.target.value)}
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-none text-2xl text-center tracking-widest font-mono transition-all"
+                    placeholder="Enter Member ID"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={memberInfoLoading}
+                  className="w-full py-3.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 shadow-lg shadow-emerald-500/20 font-bold transition-all active:scale-95"
+                >
+                  {memberInfoLoading ? 'Loading...' : 'Look Up Member'}
+                </button>
+              </form>
+
+              {memberInfoData && memberInfoData.member && (
+                <div className="mt-8 space-y-6">
+                  {/* Member Details */}
+                  <div className="bg-gray-50 rounded-xl p-5 border border-gray-100">
+                    <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wide mb-3">Member Details</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+                      <div>
+                        <span className="text-gray-400 text-xs">Name</span>
+                        <p className="font-semibold text-gray-900">{memberInfoData.member.name}</p>
+                      </div>
+                      <div>
+                        <span className="text-gray-400 text-xs">Email</span>
+                        <p className="font-semibold text-gray-900">{memberInfoData.member.email}</p>
+                      </div>
+                      <div>
+                        <span className="text-gray-400 text-xs">Phone</span>
+                        <p className="font-semibold text-gray-900">{memberInfoData.member.phone || 'N/A'}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Summary Stats */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-100 text-center">
+                      <div className="text-2xl font-bold text-emerald-700">{memberInfoData.total_borrowed}</div>
+                      <div className="text-xs text-emerald-600 font-medium">Books Borrowed</div>
+                    </div>
+                    <div className={`rounded-xl p-4 border text-center ${memberInfoData.total_unpaid_fines > 0 ? 'bg-red-50 border-red-100' : 'bg-gray-50 border-gray-100'}`}>
+                      <div className={`text-2xl font-bold ${memberInfoData.total_unpaid_fines > 0 ? 'text-red-700' : 'text-gray-400'}`}>
+                        BDT {memberInfoData.total_unpaid_fines.toFixed(2)}
+                      </div>
+                      <div className={`text-xs font-medium ${memberInfoData.total_unpaid_fines > 0 ? 'text-red-600' : 'text-gray-400'}`}>Unpaid Fines</div>
+                    </div>
+                  </div>
+
+                  {/* Borrowed Books Table */}
+                  {memberInfoData.borrowed_books.length > 0 ? (
+                    <div className="border border-gray-100 rounded-xl overflow-hidden">
+                      <div className="px-5 py-3 bg-gray-50/80 border-b border-gray-100">
+                        <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wide">Currently Borrowed Books</h3>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-gray-100">
+                          <thead className="bg-gray-50/50">
+                            <tr>
+                              <th className="px-4 py-2.5 text-left text-xs font-bold text-gray-500 uppercase">Copy ID</th>
+                              <th className="px-4 py-2.5 text-left text-xs font-bold text-gray-500 uppercase">Book</th>
+                              <th className="px-4 py-2.5 text-left text-xs font-bold text-gray-500 uppercase">Borrowed</th>
+                              <th className="px-4 py-2.5 text-left text-xs font-bold text-gray-500 uppercase">Due Date</th>
+                              <th className="px-4 py-2.5 text-left text-xs font-bold text-gray-500 uppercase">Status</th>
+                              <th className="px-4 py-2.5 text-left text-xs font-bold text-gray-500 uppercase">Fine</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {memberInfoData.borrowed_books.map((book) => (
+                              <tr key={book.copy_id} className="hover:bg-gray-50/50">
+                                <td className="px-4 py-3 text-sm font-mono text-gray-600">#{book.copy_id}</td>
+                                <td className="px-4 py-3">
+                                  <div className="text-sm font-semibold text-gray-900">{book.title}</div>
+                                  <div className="text-xs text-gray-500">by {book.authors}</div>
+                                  <div className="text-xs text-gray-400 font-mono">{book.isbn}</div>
+                                </td>
+                                <td className="px-4 py-3 text-xs text-gray-500">
+                                  {new Date(book.borrow_date).toLocaleDateString()}
+                                </td>
+                                <td className="px-4 py-3 text-xs text-gray-500">
+                                  {new Date(book.due_date).toLocaleDateString()}
+                                </td>
+                                <td className="px-4 py-3">
+                                  {book.days_overdue > 0 ? (
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                      {book.days_overdue} days overdue
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
+                                      On time
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3">
+                                  {book.fine_amount > 0 ? (
+                                    <span className={`text-xs font-semibold ${book.is_paid ? 'text-gray-400 line-through' : 'text-red-600'}`}>
+                                      BDT {book.fine_amount}
+                                      {book.is_paid && <span className="ml-1 text-emerald-600 no-underline">(Paid)</span>}
+                                    </span>
+                                  ) : (
+                                    <span className="text-xs text-gray-400">—</span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-gray-400 text-sm">
+                      No books currently borrowed
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
