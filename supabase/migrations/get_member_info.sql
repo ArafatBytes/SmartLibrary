@@ -65,5 +65,27 @@ BEGIN
     )
     GROUP BY m.name, m.email, m.phone, bc.copy_id, b.isbn, b.title, bt.borrow_date, bt.due_date, f.fine_id, f.amount, p2.payment_id
     ORDER BY bt.borrow_date DESC;
+
+    -- If no active borrows found, still return one row with member details
+    IF NOT FOUND THEN
+        RETURN QUERY
+        SELECT
+            m.name AS member_name,
+            m.email AS member_email,
+            m.phone AS member_phone,
+            'none'::TEXT AS record_type,
+            NULL::INTEGER AS copy_id,
+            NULL::VARCHAR AS isbn,
+            NULL::VARCHAR AS book_title,
+            NULL::TEXT AS authors,
+            NULL::TIMESTAMPTZ AS borrow_date,
+            NULL::DATE AS due_date,
+            0 AS days_overdue,
+            NULL::INTEGER AS fine_id,
+            0::DECIMAL(10,2) AS fine_amount,
+            FALSE AS is_paid
+        FROM members m
+        WHERE m.member_id = p_member_id;
+    END IF;
 END;
 $$ LANGUAGE plpgsql;
