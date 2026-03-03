@@ -15,7 +15,13 @@ export async function GET() {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json({ logs })
+    // Map log_timestamp from RPC to timestamp expected by the frontend
+    const mappedLogs = (logs || []).map((log: Record<string, unknown>) => ({
+      ...log,
+      timestamp: log.log_timestamp,
+    }))
+
+    return NextResponse.json({ logs: mappedLogs })
   } catch (error) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }

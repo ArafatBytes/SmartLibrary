@@ -44,19 +44,21 @@ export async function GET(request: Request) {
         }
       : null
 
-    // Separate borrowed books and fines
-    const borrowedBooks = (results || []).map((row: any) => ({
-      copy_id: row.copy_id,
-      isbn: row.isbn,
-      title: row.book_title,
-      authors: row.authors,
-      borrow_date: row.borrow_date,
-      due_date: row.due_date,
-      days_overdue: row.days_overdue,
-      fine_id: row.fine_id,
-      fine_amount: row.fine_amount,
-      is_paid: row.is_paid
-    }))
+    // Separate borrowed books and fines (exclude the member-only row with no borrow data)
+    const borrowedBooks = (results || [])
+      .filter((row: any) => row.record_type === 'borrow')
+      .map((row: any) => ({
+        copy_id: row.copy_id,
+        isbn: row.isbn,
+        title: row.book_title,
+        authors: row.authors,
+        borrow_date: row.borrow_date,
+        due_date: row.due_date,
+        days_overdue: row.days_overdue,
+        fine_id: row.fine_id,
+        fine_amount: row.fine_amount,
+        is_paid: row.is_paid
+      }))
 
     return NextResponse.json({
       member: memberDetails,
