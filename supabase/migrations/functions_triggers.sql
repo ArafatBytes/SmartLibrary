@@ -587,6 +587,9 @@ RETURNS TRIGGER AS $$
 DECLARE
     v_user_id INTEGER;
     v_action VARCHAR(20);
+    v_record_id INTEGER;
+    v_pk_name TEXT;
+    v_source JSONB;
 BEGIN
     -- Try to get user_id from session (if available)
     BEGIN
@@ -594,28 +597,58 @@ BEGIN
     EXCEPTION WHEN OTHERS THEN
         v_user_id := NULL;
     END;
+
+    -- Determine which record to extract from
+    IF (TG_OP = 'DELETE') THEN
+        v_source := to_jsonb(OLD);
+    ELSE
+        v_source := to_jsonb(NEW);
+    END IF;
+
+    -- If no session user, try to extract from the record itself
+    IF v_user_id IS NULL THEN
+        v_user_id := COALESCE(
+            (v_source->>'librarian_id')::INTEGER,
+            (v_source->>'received_by')::INTEGER
+        );
+    END IF;
+
+    -- Determine primary key column name based on table
+    v_pk_name := CASE TG_TABLE_NAME
+        WHEN 'users' THEN 'user_id'
+        WHEN 'members' THEN 'member_id'
+        WHEN 'borrow_transactions' THEN 'borrow_id'
+        WHEN 'return_transactions' THEN 'return_id'
+        WHEN 'fines' THEN 'fine_id'
+        WHEN 'payments' THEN 'payment_id'
+        WHEN 'book_copies' THEN 'copy_id'
+        WHEN 'categories' THEN 'category_id'
+        WHEN 'authors' THEN 'author_id'
+        ELSE NULL
+    END;
+
+    -- Extract record_id
+    IF v_pk_name IS NOT NULL THEN
+        v_record_id := (v_source->>v_pk_name)::INTEGER;
+    ELSE
+        v_record_id := NULL;
+    END IF;
     
     -- Determine action type
     IF (TG_OP = 'INSERT') THEN
         v_action := 'INSERT';
         INSERT INTO audit_log (user_id, action, table_name, record_id, new_values)
-        VALUES (v_user_id, v_action, TG_TABLE_NAME, 
-                (to_jsonb(NEW)->>(TG_TABLE_NAME || '_id'))::INTEGER,
-                to_jsonb(NEW));
+        VALUES (v_user_id, v_action, TG_TABLE_NAME, v_record_id, to_jsonb(NEW));
         RETURN NEW;
     ELSIF (TG_OP = 'UPDATE') THEN
         v_action := 'UPDATE';
         INSERT INTO audit_log (user_id, action, table_name, record_id, old_values, new_values)
-        VALUES (v_user_id, v_action, TG_TABLE_NAME,
-                (to_jsonb(NEW)->>(TG_TABLE_NAME || '_id'))::INTEGER,
-                to_jsonb(OLD), to_jsonb(NEW));
+        VALUES (v_user_id, v_action, TG_TABLE_NAME, v_record_id, to_jsonb(OLD), to_jsonb(NEW));
         RETURN NEW;
     ELSIF (TG_OP = 'DELETE') THEN
         v_action := 'DELETE';
         INSERT INTO audit_log (user_id, action, table_name, record_id, old_values)
-        VALUES (v_user_id, v_action, TG_TABLE_NAME,
-                (to_jsonb(OLD)->>(TG_TABLE_NAME || '_id'))::INTEGER,
-                to_jsonb(OLD));
+        VALUES (v_user_id, v_action, TG_TABLE_NAME, v_record_id, to_jsonb(OLD));
         RETURN OLD;
     END IF;
 END;
